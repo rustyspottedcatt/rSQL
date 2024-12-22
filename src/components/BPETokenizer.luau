@@ -12,7 +12,6 @@ function BPETokenizer.new()
 	return self
 end
 
--- Load an external JSON map { "Hello": 123, "world": 124, ... }
 function BPETokenizer:loadExternalVocab(url: string)
 	local success, result = pcall(function()
 		return HttpService:GetAsync(url)
@@ -60,7 +59,6 @@ function BPETokenizer:getVocabSize(): number
 	return self.vocabSize
 end
 
--- Minimal approach: split by whitespace, look up each "word" in vocab
 function BPETokenizer:textToTokens(text: string): {number}
 	local tokens = {}
 	for word in text:gmatch("%S+") do
