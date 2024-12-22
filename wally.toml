@@ -1,9 +1,9 @@
 [package]
-name = "bourh/advanced-analytics"
+name = "rustyspotted@rustyspottedcatt/RoLLM"
 description = ".."
 version = "0.0.1"
 license = "MIT"
-registry = "https://github.com/UpliftGames/wally-index"
+registry = "https://github.com/rustyspottedcatt/RoLLM"
 realm = "shared"
 
 [dependencies]
