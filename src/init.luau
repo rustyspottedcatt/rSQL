@@ -26,6 +26,8 @@
 ]]
 
 local Types = require(script.lib.types)
+local Optimizer = require(script.lib.Optimizer)
+local CrossEntropyLoss = require(script.lib.CrossEntropyLoss)
 
 local LinearAlgebra = require(script.components.LinearAlgebra)
 local Tokenizer = require(script.components.Tokenizer)
@@ -41,13 +43,14 @@ local BPETokenizer = require(script.components.BPETokenizer)
 local RoLLM = {}
 
 --[=[
-	@prop Presets Folder
-	@within RoLLM
-	@readonly
-	References the Presets folder. 
+    @prop Presets Folder
+    @within RoLLM
+    @readonly
+    References the Presets folder.
 ]=]
 
 RoLLM.Presets = (script.Parent :: Instance)
+
 RoLLM.Promise = require(RoLLM.Presets.promise)
 RoLLM.Signal = require(RoLLM.Presets.signal)
 RoLLM.Types = Types
@@ -62,143 +65,196 @@ RoLLM.TransformerModel = TransformerModel
 RoLLM.CharTokenizer = CharTokenizer
 RoLLM.BPETokenizer = BPETokenizer
 
-local function chunkString(bigString: string, chunkSize: number): {string}
-	local chunks = {}
-	local idx = 1
-	while idx <= #bigString do
-		local chunk = string.sub(bigString, idx, idx + chunkSize - 1)
-		table.insert(chunks, chunk)
-		idx += chunkSize
-	end
-	return chunks
+--[=[
+    @function chunkString
+    @within RoLLM
+    @param bigString string - The string to be chunked.
+    @param chunkSize number - The size of each chunk.
+    @return {string} - A table containing string chunks.
+]=]
+local function chunkString(bigString: string, chunkSize: number): { string }
+    local chunks: { string } = {}
+    local idx = 1
+    while idx <= #bigString do
+        local chunk = string.sub(bigString, idx, idx + chunkSize - 1)
+        table.insert(chunks, chunk)
+        idx += chunkSize
+    end
+    return chunks
 end
 
---[[
+--[=[
     Creates a "ready-to-use" LLM instance with a tokenizer and model.
 
-    textData (string):  
-        - A chunk of text to build an initial vocabulary (for small demos). 
-          E.g., "Hello world! This is my text for building a vocab."
-
-    config (table): 
-        - A config table for the Transformer, containing:
-            vocabSize: number,
-            dModel: number,
-            numHeads: number,
-            dFF: number,
-            numLayers: number,
-            maxSeqLen: number,
-        - or any subset you want to customize.
-
-    Returns: 
-        A table (LLM object) with methods:
-            :predict(inputStr) -> string
-            :generate(inputStr, numTokens) -> string
-            etc.
-]]
-
+    @function new
+    @within RoLLM
+    @param textData string | {string} - Text data for building the vocabulary.
+    @param config Types.TransformerConfig - Configuration table for the Transformer.
+    @param chunkSize number? - Optional chunk size for processing text.
+    @return {any} - An LLM object with prediction, generation, and training methods.
+]=]
 function RoLLM.new(
-	textData: string | {string}, 
-	config: Types.TransformerConfig, 
-	chunkSize: number?
-): {any}
-	chunkSize = chunkSize or 500000
-	local tokenizerMode = config.tokenizerMode or "char"
+    textData: string | { string },
+    config: Types.TransformerConfig,
+    chunkSize: number?
+): { any }
+    chunkSize = chunkSize or 500000
+    local tokenizerMode: string = config.tokenizerMode or "char"
 
-	local tokenizer
-	if tokenizerMode == "char" then
-		tokenizer = CharTokenizer.new()
-	else
-		tokenizer = BPETokenizer.new()
-		if config.externalVocabURL then
-			tokenizer:loadExternalVocab(config.externalVocabURL)
+    local tokenizer: typeof(Tokenizer.new("char"))
+    if tokenizerMode == "char" then
+        tokenizer = CharTokenizer.new()
+    else
+        tokenizer = BPETokenizer.new()
+        if config.externalVocabURL then
+            tokenizer:loadExternalVocab(config.externalVocabURL)
+        end
+    end
+
+    local function addTextForChar(str: string): any
+		if tokenizerMode == "char" then
+        	tokenizer:buildVocabFromText(str)
+		else
+			tokenizer:textToTokens(str);
 		end
-	end
+    end
 
-	local function addTextForChar(str: string)
-		(tokenizer).buildVocabFromText(tokenizer, str)
-	end
-
-	if tokenizerMode == "char" then
-		if type(textData) == "table" then
-			for _, singleString in ipairs(textData) do
-				if #singleString > chunkSize then
-					local chunks = chunkString(singleString, chunkSize)
-					for _, chunk in ipairs(chunks) do
-						addTextForChar(chunk)
-					end
-				else
-					addTextForChar(singleString)
-				end
+    if tokenizerMode == "char" then
+        if type(textData) == "table" then
+            for _, singleString in ipairs(textData) do
+                if #singleString > chunkSize then
+                    local chunks = chunkString(singleString, chunkSize)
+                    for _, chunk in ipairs(chunks) do
+                        addTextForChar(chunk)
+                    end
+                else
+                    addTextForChar(singleString)
+                end
+            end
+        else
+            if #textData > chunkSize then
+                local chunks = chunkString(textData, chunkSize)
+                for _, chunk in ipairs(chunks) do
+                    addTextForChar(chunk)
+                end
+            else
+                addTextForChar(textData)
+            end
+        end
+    else
+		if #textData > chunkSize then
+			local chunks = chunkString(textData, chunkSize)
+			for _, chunk in ipairs(chunks) do
+				addTextForChar(chunk)
 			end
 		else
-			-- single string
-			if #textData > chunkSize then
-				local chunks = chunkString(textData, chunkSize)
-				for _, chunk in ipairs(chunks) do
-					addTextForChar(chunk)
+			addTextForChar(textData)
+		end
+    end
+
+    local vocabSize: number = tokenizer:getVocabSize()
+    if vocabSize == 0 then
+        error("Vocab size is 0. Did you load data or external vocab properly?")
+    end
+    config.vocabSize = vocabSize
+    print("Final vocab size:", vocabSize)
+
+    local model: TransformerModel.TransformerModelClass = TransformerModel.new(config)
+
+    local self = {}
+
+    local function textToTokens(str: string): { number }
+        return tokenizer:textToTokens(str)
+    end
+
+    local function tokensToText(toks: { number }): string
+        return tokenizer:tokensToText(toks)
+    end
+
+    function self:predict(inputStr: string): string
+        local tokens = textToTokens(inputStr)
+        local nextID = model:predictNextToken(tokens)
+        return tokensToText({ nextID })
+    end
+
+    function self:generate(inputStr: string, numTokens: number): string
+        local tokens = textToTokens(inputStr)
+        for _ = 1, numTokens do
+            local nxt = model:predictNextToken(tokens)
+            table.insert(tokens, nxt)
+        end
+        return tokensToText(tokens)
+    end
+
+    function self:predictTemperature(inputStr: string, temperature: number): string
+        local tokens = textToTokens(inputStr)
+        local nextID = model:predictNextTokenTemperature(tokens, temperature)
+        return tokensToText({ nextID })
+    end
+
+    function self:generateTemperature(inputStr: string, numTokens: number, temperature: number): string
+        local tokens = textToTokens(inputStr)
+        for _ = 1, numTokens do
+            local nxt = model:predictNextTokenTemperature(tokens, temperature)
+            table.insert(tokens, nxt)
+        end
+        return tokensToText(tokens)
+    end
+
+    --[=[
+        Trains the Transformer model using provided training data.
+
+        @function trainModel
+        @within RoLLM
+        @param trainingData {string} - A table of training strings.
+        @param epochs number - Number of training epochs.
+        @param learningRate number - Learning rate for the optimizer.
+        @return nil
+    ]=]
+	function self:trainModel(trainingData: { string }, epochs: number, learningRate: number): any
+		local optimizerInstance = Optimizer.new(learningRate)
+		local lossFunction = CrossEntropyLoss.new()
+	
+		print(string.format("Starting Training: %d epochs, Learning Rate: %f", epochs, learningRate))
+	
+		for epoch = 1, epochs do
+			local totalLoss = 0
+			for _, data in ipairs(trainingData) do
+				local tokens = textToTokens(data)
+	
+				if #tokens < 2 then
+					error(string.format("Input sequence is too short for training. Tokens: %s", table.concat(tokens, ", ")))
 				end
-			else
-				addTextForChar(textData)
+	
+				print(string.format("Input tokens for training: %s", table.concat(tokens, ", ")))
+	
+				local logits = model:forward(tokens)
+	
+				local targets = {}
+				for i = 2, #tokens do
+					table.insert(targets, tokens[i])
+				end
+	
+				print(string.format("Generated targets: %s", table.concat(targets, ", ")))
+	
+				local loss = lossFunction:compute(logits, targets)
+				totalLoss += loss
+	
+				local gradOutput = lossFunction:backward(logits, targets)
+				model:backward(gradOutput)
+	
+				optimizerInstance:updateParameters(model:getParameters())
 			end
+			print(string.format("Epoch %d/%d, Loss: %.4f", epoch, epochs, totalLoss))
 		end
-	end
+	
+		print("Training Completed.")
+	end	
+	
+    self._tokenizer = tokenizer
+    self._model = model
 
-	-- 3) Now we have a vocab size
-	local vocabSize = tokenizer:getVocabSize()
-	if vocabSize == 0 then
-		error("Vocab size is 0. Did you load data or external vocab properly?")
-	end
-	config.vocabSize = vocabSize
-	print("Final vocab size:", vocabSize)
-
-	-- 4) Create the TransformerModel
-	local model = TransformerModel.new(config)
-
-	-- 5) Build user-facing LLM object
-	local self = {}
-
-	local function textToTokens(str: string): {number}
-		return tokenizer:textToTokens(str)
-	end
-	local function tokensToText(toks: {number}): string
-		return tokenizer:tokensToText(toks)
-	end
-
-	function self:predict(inputStr: string): string
-		local tokens = textToTokens(inputStr)
-		local nextID = model:predictNextToken(tokens)
-		return tokensToText({ nextID })
-	end
-
-	function self:generate(inputStr: string, numTokens: number): string
-		local tokens = textToTokens(inputStr)
-		for _ = 1, numTokens do
-			local nxt = model:predictNextToken(tokens)
-			table.insert(tokens, nxt)
-		end
-		return tokensToText(tokens)
-	end
-
-	function self:predictTemperature(inputStr: string, temperature: number): string
-		local tokens = textToTokens(inputStr)
-		local nextID = model:predictNextTokenTemperature(tokens, temperature)
-		return tokensToText({ nextID })
-	end
-
-	function self:generateTemperature(inputStr: string, numTokens: number, temperature: number): string
-		local tokens = textToTokens(inputStr)
-		for _ = 1, numTokens do
-			local nxt = model:predictNextTokenTemperature(tokens, temperature)
-			table.insert(tokens, nxt)
-		end
-		return tokensToText(tokens)
-	end
-
-	self._tokenizer = tokenizer
-	self._model = model
-
-	return self
+    return self
 end
 
 return RoLLM
