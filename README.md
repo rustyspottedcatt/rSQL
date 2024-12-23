@@ -1,4 +1,4 @@
-# RoLLM: Roblox Language Model
+# RoLLM: Roblox's First Language Model made from scratch
 
 RoLLM (**Roblox Language Model**) is an experimental implementation of a GPT-like Transformer designed to run inside the Roblox Studio environment. While it’s not fully functional for practical use, it serves as an educational project showcasing how to build a Transformer-based language model in Luau.
 
