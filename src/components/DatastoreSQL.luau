@@ -1,4 +1,3 @@
--- DatastoreSQL.Luau
 local Types = require(script.Parent.Parent.lib.types)
 local Promise = require(script.Parent.Parent.Parent.Parent.Packages.promise)
 
@@ -18,7 +17,7 @@ function DatastoreSQL.query(self: Types.DatastoreSQLConnection, query: Types.SQL
     return Promise.new(function(resolve, reject)
         local functionName = "DatastoreSQL.query"
 
-        local success, queryCommand, tableName, columns, values, conditions = pcall(function()
+        local success, queryCommand, tableName, columns, values, setClauses, conditions = pcall(function()
             return self:parseSQL(query :: Types.SQLQuery)
         end)
 
@@ -66,7 +65,7 @@ function DatastoreSQL.query(self: Types.DatastoreSQLConnection, query: Types.SQL
                 return reject(generateError(functionName, result))
             end
         elseif queryCommand == "UPDATE" and self.config.allowUpdate then
-            local success, result = self:update(tableName, columns, values, conditions)
+            local success, result = self:update(tableName, setClauses, conditions)
             if success then
                 return resolve(result)
             else
@@ -80,7 +79,7 @@ function DatastoreSQL.query(self: Types.DatastoreSQLConnection, query: Types.SQL
                 return reject(generateError(functionName, result))
             end
         else
-            return reject(generateError(functionName, "Unexpected SQL command, expected INSERT, SELECT, UPDATE, DELETE, CREATE, DROP or TRUNCATE, OR command is not allowed by config."))
+            return reject(generateError(functionName, "Unexpected SQL command, expected INSERT, SELECT, UPDATE, DELETE, CREATE, DROP or TRUNCATE, OR command is not allowed by config (common case)."))
         end
     end)
 end
@@ -94,7 +93,7 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
     local truncatePattern = "^TRUNCATE%s+TABLE%s+([%w_]+)%s*$"
     local insertPattern = "^INSERT%s+INTO%s+([%w_]+)%s*%(([%w_,%s]+)%)%s*VALUES%s*%(([%w%s',]+)%)$"
     local selectPattern = [[SELECT%s+(.-)%s+FROM%s+(%S+)%s*WHERE%s*(.+)]]
-    local updatePattern = [[UPDATE%s+(%S+)%s+SET%s+(.-)%s*WHERE%s*(.+)]]
+    local updatePattern = [[UPDATE%s+([%w_]+)%s+SET%s+([^WHERE]+)%s+WHERE%s+(.+)]]
     local deletePattern = [[DELETE%s+FROM%s+(%S+)%s+WHERE%s+(.+)]]
 
     local function stripQuotes(s: string): string
@@ -150,7 +149,6 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
         if #selectMatch >= 2 then
             local columnsStr, tableName, conditionsStr = selectMatch[1], selectMatch[2], selectMatch[3]
             local columns = self:split(columnsStr, ",")
-
             local conditions = nil
             if conditionsStr then
                 conditions = self:parseConditions(conditionsStr)
@@ -158,35 +156,37 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
                     conditions[key] = stripQuotes(value)
                 end
             end
-
             return "SELECT", tableName, columns, nil, conditions
         else
             print("SELECT pattern did not match. Expected at least 2 captures, got:", #selectMatch)
             error(generateError(functionName, "SELECT query did not match the expected pattern."))
         end
-    elseif command == "UPDATE" then
-        local updateMatch = { string.match(query, updatePattern) }
-        if #updateMatch >= 3 then
-            local tableName, setStr, conditionsStr = updateMatch[1], updateMatch[2], updateMatch[3]
-            local setClauses = self:parseSetClause(setStr)
+        elseif command == "UPDATE" then
+            local updateMatch = { string.match(query, updatePattern) }
+        
+            if #updateMatch >= 3 then
+                local tableName, setStr, conditionsStr = updateMatch[1], updateMatch[2], updateMatch[3]
 
-            for key, value in pairs(setClauses) do
-                setClauses[key] = stripQuotes(value)
-            end
-
-            local conditions = nil
-            if conditionsStr then
-                conditions = self:parseConditions(conditionsStr)
-                for key, value in pairs(conditions) do
-                    conditions[key] = stripQuotes(value)
+                local setClauses = self:parseSetClause(setStr)
+        
+                for key, value in pairs(setClauses) do
+                    setClauses[key] = stripQuotes(value)
                 end
+        
+                local conditions = nil
+                if conditionsStr then
+                    print("Debug: Raw WHERE Clause: ", conditionsStr)
+                    conditions = self:parseConditions(conditionsStr)
+                    for key, value in pairs(conditions) do
+                        conditions[key] = stripQuotes(value)
+                    end
+                end
+        
+                return "UPDATE", tableName, nil, nil, setClauses, conditions
+            else
+                print("UPDATE pattern did not match. Expected 3 captures, got:", #updateMatch)
+                error(generateError(functionName, "UPDATE query did not match the expected pattern."))
             end
-
-            return "UPDATE", tableName, setClauses, nil, conditions
-        else
-            print("UPDATE pattern did not match. Expected 3 captures, got:", #updateMatch)
-            error(generateError(functionName, "UPDATE query did not match the expected pattern."))
-        end
     elseif command == "DELETE" then
         local deleteMatch = { string.match(query, deletePattern) }
         if #deleteMatch >= 2 then
@@ -221,22 +221,20 @@ function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName:
         return false, generateError(functionName, "Columns must be specified for CREATE TABLE.")
     end
 
-    return Promise.new(function(resolve, reject)
-        local updateSuccess, updateError = pcall(function()
-            self.datastore:UpdateAsync(tableName, function(currentData)
-                if currentData then
-                    error("Table '" .. tableName .. "' already exists.")
-                end
-                return {}
-            end)
+    local updateSuccess, updateError = pcall(function()
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            if currentData then
+                error("Table '" .. tableName .. "' already exists.")
+            end
+            return {}
         end)
-
-        if updateSuccess then
-            resolve(true, "[rSQL] Table '" .. tableName .. "' created successfully.")
-        else
-            reject(generateError(functionName, "Failed to create table: " .. tostring(updateError)))
-        end
     end)
+
+    if updateSuccess then
+        return true, "[rSQL] Table '" .. tableName .. "' created successfully."
+    else
+        return false, generateError(functionName, "Failed to create table: " .. tostring(updateError))
+    end
 end
 
 function DatastoreSQL.dropTable(self: Types.DatastoreSQLConnection, tableName: string): (boolean, string?)
@@ -269,22 +267,21 @@ function DatastoreSQL.truncateTable(self: Types.DatastoreSQLConnection, tableNam
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
     end
-    return Promise.new(function(resolve, reject)
-        local updateSuccess, updateError = pcall(function()
-            return self.datastore:UpdateAsync(tableName, function(currentData)
-                if not currentData then
-                    error("Table '" .. tableName .. "' does not exist.")
-                end
-                return {}
-            end)
-        end)
 
-        if updateSuccess then
-            resolve("[rSQL] Table '" .. tableName .. "' truncated successfully.")
-        else
-            reject(generateError(functionName, "Failed to truncate table: " .. tostring(updateError)))
-        end
+    local updateSuccess, updateError = pcall(function()
+        return self.datastore:UpdateAsync(tableName, function(currentData)
+            if not currentData then
+                error("Table '" .. tableName .. "' does not exist.")
+            end
+            return {}
+        end)
     end)
+
+    if updateSuccess then
+        return true, "[rSQL] Table '" .. tableName .. "' truncated successfully."
+    else
+        return false, generateError(functionName, "Failed to truncate table: " .. tostring(updateError))
+    end
 end
 
 function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: string, columns: table, values: table): Types.TypedPromise<(boolean, string?)>
@@ -293,31 +290,24 @@ function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: stri
         return false, generateError(functionName, "Number of columns and values do not match.")
     end
 
-    return Promise.new(function(resolve, reject)
-        if #columns ~= #values then
-            reject(generateError(functionName, "Number of columns and values do not match."))
-            return
-        end
+    local record = {}
+    for i, column in ipairs(columns) do
+        record[column] = values[i]
+    end
 
-        local record = {}
-        for i, column in ipairs(columns) do
-            record[column] = values[i]
-        end
-
-        local updateSuccess, updateError = pcall(function()
-            self.datastore:UpdateAsync(tableName, function(currentData)
-                currentData = currentData or {}
-                table.insert(currentData, record)
-                return currentData
-            end)
+    local updateSuccess, updateError = pcall(function()
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            currentData = currentData or {}
+            table.insert(currentData, record)
+            return currentData
         end)
-
-        if updateSuccess then
-            resolve(true, "[rSQL] Data inserted successfully.")
-        else
-            reject(generateError(functionName, "Failed to insert data: " .. tostring(updateError)))
-        end
     end)
+
+    if updateSuccess then
+        return true, "[rSQL] Data inserted successfully."
+    else
+        return false, generateError(functionName, "Failed to insert data: " .. tostring(updateError))
+    end
 end
 
 function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: string, columns: table, conditions: table?): (Types.SQLQueryResult?, string?)
@@ -364,47 +354,46 @@ end
 
 function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: string, setClauses: table, conditions: table?): Types.TypedPromise<(boolean, string?)>
     local functionName = "DatastoreSQL.update"
-    return Promise.new(function(resolve, reject)
-        local updateSuccess, updateError = pcall(function()
-            self.datastore:UpdateAsync(tableName, function(currentData)
-                if not currentData then
-                    error("Table '" .. tableName .. "' does not exist.")
-                end
 
-                local updated = false
-                for _, record in ipairs(currentData) do
-                    local matches = true
-                    if conditions then
-                        for key, value in pairs(conditions) do
-                            if tostring(record[key]) ~= value then
-                                matches = false
-                                break
-                            end
+    local updateSuccess, updateError = pcall(function()
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            if not currentData then
+                error("Table '" .. tableName .. "' does not exist.")
+            end
+
+            local updated = false
+            for _, record in ipairs(currentData) do
+                local matches = true
+                if conditions then
+                    for key, value in pairs(conditions) do
+                        if tostring(record[key]) ~= value then
+                            matches = false
+                            break
                         end
                     end
+                end
 
-                    if matches then
-                        for key, value in pairs(setClauses) do
-                            record[key] = value
-                        end
-                        updated = true
+                if matches then
+                    for key, value in pairs(setClauses) do
+                        record[key] = value
                     end
+                    updated = true
                 end
+            end
 
-                if not updated then
-                    error("No matching records found to update.")
-                end
+            if not updated then
+                error("No matching records found to update.")
+            end
 
-                return currentData
-            end)
+            return currentData
         end)
-
-        if updateSuccess then
-            resolve(true, "[rSQL] Records updated successfully.")
-        else
-            reject(generateError(functionName, "Failed to update records: " .. tostring(updateError)))
-        end
     end)
+
+    if updateSuccess then
+        return true, "[rSQL] Records updated successfully."
+    else
+        return false, generateError(functionName, "Failed to update records: " .. tostring(updateError))
+    end
 end
 
 function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: string, conditions: table?): Types.TypedPromise<(boolean, string?)>
@@ -414,46 +403,44 @@ function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: stri
         return false, generateError(functionName, "Table name cannot be empty.")
     end
 
-    return Promise.new(function(resolve, reject)
-        local updateSuccess, updateError = pcall(function()
-            self.datastore:UpdateAsync(tableName, function(currentData)
-                if not currentData then
-                    error("Table '" .. tableName .. "' does not exist.")
-                end
+    local updateSuccess, updateError = pcall(function()
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            if not currentData then
+                error("Table '" .. tableName .. "' does not exist.")
+            end
 
-                local originalCount = #currentData
-                local filteredData = {}
+            local originalCount = #currentData
+            local filteredData = {}
 
-                for _, record in ipairs(currentData) do
-                    local matches = true
-                    if conditions then
-                        for key, value in pairs(conditions) do
-                            if tostring(record[key]) ~= value then
-                                matches = false
-                                break
-                            end
+            for _, record in ipairs(currentData) do
+                local matches = true
+                if conditions then
+                    for key, value in pairs(conditions) do
+                        if tostring(record[key]) ~= value then
+                            matches = false
+                            break
                         end
                     end
-
-                    if not matches then
-                        table.insert(filteredData, record)
-                    end
                 end
 
-                if #filteredData == originalCount then
-                    error("No matching records found to delete.")
+                if not matches then
+                    table.insert(filteredData, record)
                 end
+            end
 
-                return filteredData
-            end)
+            if #filteredData == originalCount then
+                error("No matching records found to delete.")
+            end
+
+            return filteredData
         end)
-
-        if updateSuccess then
-            resolve(true, "[rSQL] Records deleted successfully.")
-        else
-            reject(generateError(functionName, "Failed to delete records: " .. tostring(updateError)))
-        end
     end)
+
+    if updateSuccess then
+        return true, "[rSQL] Records deleted successfully."
+    else
+        return false, generateError(functionName, "Failed to delete records: " .. tostring(updateError))
+    end
 end
 
 function DatastoreSQL.split(self: Types.DatastoreSQLConnection, inputStr: string, sep: string): table
@@ -485,14 +472,14 @@ function DatastoreSQL.stripQuotes(self: Types.DatastoreSQLConnection, s: string)
 end
 
 function DatastoreSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr: string): table
-    local functionName = "DatastoreSQL.parseSetClause"
     local setClauses = {}
-    for key, value in string.gmatch(setStr, "(%w+)%s*=%s*'?(%w+)'?") do
-        setClauses[key] = value
+    for key, value in string.gmatch(setStr, "(%w+)%s*=%s*([^,]+)") do
+        setClauses[key] = self:stripQuotes(value:match("^%s*(.-)%s*$"))
     end
     if next(setClauses) == nil then
-        error(generateError(functionName, "Failed to parse SET clause: No valid key-value pairs found."))
+        error("Failed to parse SET clause: No valid key-value pairs found.")
     end
+    print("Debug: Parsed SET Clauses: ", setClauses)
     return setClauses
 end
 
