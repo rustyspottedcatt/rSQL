@@ -48,7 +48,7 @@ function ProfileSQL.query(self: Types.ProfileSQLConnection, query: Types.SQLQuer
     return Promise.new(function(resolve, reject)
         local functionName = "ProfileSQL.query"
 
-        local success, queryCommand, tableName, columns, values, conditions = pcall(function()
+        local success, queryCommand, tableName, columns, values, setClauses, conditions = pcall(function()
             return self:parseSQL(query :: Types.SQLQuery)
         end)
 
@@ -96,7 +96,7 @@ function ProfileSQL.query(self: Types.ProfileSQLConnection, query: Types.SQLQuer
                 return reject(generateError(functionName, result))
             end
         elseif queryCommand == "UPDATE" and self.config.allowUpdate then
-            local success, result = self:update(tableName, columns, values, conditions)
+            local success, result = self:update(tableName, setClauses, conditions)
             if success then
                 return resolve(result)
             else
@@ -110,7 +110,7 @@ function ProfileSQL.query(self: Types.ProfileSQLConnection, query: Types.SQLQuer
                 return reject(generateError(functionName, result))
             end
         else
-            return reject(generateError(functionName, "Unexpected SQL command, expected INSERT, SELECT, UPDATE, DELETE, CREATE, DROP or TRUNCATE, OR command is not allowed by config."))
+            return reject(generateError(functionName, "Unexpected SQL command, expected INSERT, SELECT, UPDATE, DELETE, CREATE, DROP or TRUNCATE, OR command is not allowed by config (common case)."))
         end
     end)
 end
@@ -123,7 +123,7 @@ end
     @param query Types.SQLQuery - The SQL query string to parse.
     @return string, string, table, table, table - Parsed components of the SQL query.
 ]]
-function ProfileSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.SQLQuery)
+function ProfileSQL.parseSQL(self: Types.ProfileSQLConnection, query: Types.SQLQuery)
     local functionName = "DatastoreSQL.parseSQL"
     local command = extractCommand(query)
 
@@ -353,7 +353,7 @@ function ProfileSQL.insert(self: Types.ProfileSQLConnection, tableName: string, 
     table.insert(fetchedData, record)
     self.profilesTable[tableName] = fetchedData
 
-    return true
+    return true, "[rSQL] Data inserted successfully."
 end
 
 --[[
@@ -402,7 +402,7 @@ function ProfileSQL.select(self: Types.ProfileSQLConnection, tableName: string, 
     if #results == 0 then
         return generateError(functionName, "No matching records found."), results
     else
-        return "[rSQL] Records successfully fetched.", results
+        return true, results
     end
 end
 
@@ -578,7 +578,7 @@ end
     @param setStr string - The SET clause string to parse.
     @return table - A table containing the parsed SET clauses.
 ]]
-function ProfileSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr: string): table
+function ProfileSQL.parseSetClause(self: Types.ProfileSQLConnection, setStr: string): table
     local setClauses = {}
     for key, value in string.gmatch(setStr, "(%w+)%s*=%s*([^,]+)") do
         setClauses[key] = self:stripQuotes(value:match("^%s*(.-)%s*$"))
