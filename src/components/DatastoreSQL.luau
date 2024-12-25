@@ -386,9 +386,9 @@ function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: stri
     end)
 end
 
-function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: string, conditions: table?): (boolean, string?)
+function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: string, conditions: table?): Types.TypedPromise<(boolean, string?)>
     local functionName = "DatastoreSQL.delete"
-    
+
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
     end
