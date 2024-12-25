@@ -586,7 +586,6 @@ function ProfileSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr: s
     if next(setClauses) == nil then
         error("Failed to parse SET clause: No valid key-value pairs found.")
     end
-    print("Debug: Parsed SET Clauses: ", setClauses)
     return setClauses
 end
 

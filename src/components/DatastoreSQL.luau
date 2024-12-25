@@ -139,7 +139,7 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
                 values[i] = stripQuotes(value)
             end
 
-            return "INSERT", tableName, columns, values, nil
+            return "INSERT", tableName, columns, values, nil, nil
         else
             print("INSERT pattern did not match. Expected 3 captures, got:", #insertMatch)
             error(generateError(functionName, "INSERT query did not match the expected pattern."))
@@ -156,7 +156,7 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
                     conditions[key] = stripQuotes(value)
                 end
             end
-            return "SELECT", tableName, columns, nil, conditions
+            return "SELECT", tableName, columns, nil, nil, conditions
         else
             print("SELECT pattern did not match. Expected at least 2 captures, got:", #selectMatch)
             error(generateError(functionName, "SELECT query did not match the expected pattern."))
@@ -199,7 +199,7 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
                 end
             end
 
-            return "DELETE", tableName, nil, nil, conditions
+            return "DELETE", tableName, nil, nil, nil, conditions
         else
             print("DELETE pattern did not match. Expected 2 captures, got:", #deleteMatch)
             error(generateError(functionName, "DELETE query did not match the expected pattern."))
@@ -223,7 +223,7 @@ function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName:
     local updateSuccess, updateError = pcall(function()
         self.datastore:UpdateAsync(tableName, function(currentData)
             if currentData then
-                error("Table '" .. tableName .. "' already exists.")
+                return currentData
             end
             return {}
         end)
@@ -270,7 +270,7 @@ function DatastoreSQL.truncateTable(self: Types.DatastoreSQLConnection, tableNam
     local updateSuccess, updateError = pcall(function()
         return self.datastore:UpdateAsync(tableName, function(currentData)
             if not currentData then
-                error("Table '" .. tableName .. "' does not exist.")
+                return false
             end
             return {}
         end)
@@ -294,10 +294,24 @@ function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: stri
         record[column] = values[i]
     end
 
+    local primaryKeyColumn = columns[1]
+    local primaryKeyValue = record[primaryKeyColumn]
+
     local updateSuccess, updateError = pcall(function()
         self.datastore:UpdateAsync(tableName, function(currentData)
             currentData = currentData or {}
-            table.insert(currentData, record)
+
+            local foundDuplicate : boolean = false
+            for _, existingRecord in ipairs(currentData) do
+                if existingRecord[primaryKeyColumn] == primaryKeyValue then
+                    foundDuplicate = true
+                end
+            end
+
+            if not foundDuplicate then
+                table.insert(currentData, record)
+            end
+
             return currentData
         end)
     end)
@@ -478,7 +492,6 @@ function DatastoreSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr:
     if next(setClauses) == nil then
         error("Failed to parse SET clause: No valid key-value pairs found.")
     end
-    print("Debug: Parsed SET Clauses: ", setClauses)
     return setClauses
 end
 
