@@ -211,7 +211,7 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
     end
 end
 
-function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName: string, columns: table): (boolean, string?)
+function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName: string, columns: table): Types.TypedPromise<(boolean, string?)>
     local functionName = "DatastoreSQL.createTable"
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
@@ -221,23 +221,18 @@ function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName:
         return false, generateError(functionName, "Columns must be specified for CREATE TABLE.")
     end
 
-    local fetchSuccess, fetchedData = pcall(function()
-        return self.datastore:GetAsync(tableName)
+    return Promise.new(function(resolve, reject)
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            if currentData then
+                error("Table '" .. tableName .. "' already exists.")
+            end
+            return {}
+        end):andThen(function()
+            resolve("[rSQL] Table '" .. tableName .. "' created successfully.")
+        end):catch(function(err)
+            reject(generateError(functionName, "Failed to create table: " .. tostring(err)))
+        end)
     end)
-
-    if fetchSuccess and fetchedData then
-        return false, generateError(functionName, "Table '" .. tableName .. "' already exists.")
-    end
-
-    local setSuccess, setError = pcall(function()
-        self.datastore:SetAsync(tableName, {})
-    end)
-
-    if not setSuccess then
-        return false, generateError(functionName, "Failed to create table: " .. tostring(setError))
-    else
-        return true, "[rSQL] Table '" .. tableName .. "' created successfully."
-    end
 end
 
 function DatastoreSQL.dropTable(self: Types.DatastoreSQLConnection, tableName: string): (boolean, string?)
@@ -265,32 +260,26 @@ function DatastoreSQL.dropTable(self: Types.DatastoreSQLConnection, tableName: s
     end
 end
 
-function DatastoreSQL.truncateTable(self: Types.DatastoreSQLConnection, tableName: string): (boolean, string?)
+function DatastoreSQL.truncateTable(self: Types.DatastoreSQLConnection, tableName: string): Types.TypedPromise<(boolean, string?)>
     local functionName = "DatastoreSQL.truncateTable"
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
     end
-
-    local fetchSuccess, fetchedData = pcall(function()
-        return self.datastore:GetAsync(tableName)
+    return Promise.new(function(resolve, reject)
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            if not currentData then
+                error("Table '" .. tableName .. "' does not exist.")
+            end
+            return {}
+        end):andThen(function()
+            resolve("[rSQL] Table '" .. tableName .. "' truncated successfully.")
+        end):catch(function(err)
+            reject(generateError(functionName, "Failed to truncate table: " .. tostring(err)))
+        end)
     end)
-
-    if not fetchSuccess or not fetchedData then
-        return false, generateError(functionName, "Table '" .. tableName .. "' does not exist.")
-    end
-
-    local setSuccess, setError = pcall(function()
-        self.datastore:SetAsync(tableName, {})
-    end)
-
-    if not setSuccess then
-        return false, generateError(functionName, "Failed to truncate table: " .. tostring(setError))
-    else
-        return true, "[rSQL] Table '" .. tableName .. "' truncated successfully."
-    end
 end
 
-function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: string, columns: table, values: table): (boolean, string?)
+function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: string, columns: table, values: table): Types.TypedPromise<(boolean, string?)>
     local functionName = "DatastoreSQL.insert"
     if #columns ~= #values then
         return false, generateError(functionName, "Number of columns and values do not match.")
@@ -301,31 +290,17 @@ function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: stri
         record[column] = values[i]
     end
 
-    local fetchSuccess: boolean, fetchedData: table = pcall(function()
-        return self.datastore:GetAsync(tableName)
+    return Promise.new(function(resolve, reject)
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            currentData = currentData or {}
+            table.insert(currentData, record)
+            return currentData
+        end):andThen(function()
+            resolve("[rSQL] Data inserted successfully.")
+        end):catch(function(err)
+            reject(generateError(functionName, "Failed to insert data: " .. tostring(err)))
+        end)
     end)
-
-    if not fetchSuccess then
-        return false, generateError(functionName, "Failed to fetch data from DataStore.")
-    end
-
-    if fetchedData == nil and self.config.allowOverwrite then
-        fetchedData = {}
-    elseif fetchedData == nil and not self.config.allowOverwrite then
-        return false, generateError(functionName, "Table does not exist and overwrite is not allowed, so cannot insert data.")
-    end
-
-    table.insert(fetchedData, record)
-
-    local setSuccess: boolean, setError: string? = pcall(function()
-        self.datastore:SetAsync(tableName, fetchedData)
-    end)
-
-    if not setSuccess then
-        return false, generateError(functionName, "Failed to set data in DataStore: " .. tostring(setError))
-    else
-        return true
-    end
 end
 
 function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: string, columns: table, conditions: table?): (Types.SQLQueryResult?, string?)
@@ -370,105 +345,92 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
     end
 end
 
-function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: string, setClauses: table, conditions: table?): (boolean, string?)
+function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: string, setClauses: table, conditions: table?): Types.TypedPromise<(boolean, string?)>
     local functionName = "DatastoreSQL.update"
-    local fetchSuccess: boolean, fetchedData: table = pcall(function()
-        return self.datastore:GetAsync(tableName)
-    end)
+    return Promise.new(function(resolve, reject)
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            if not currentData then
+                error("Table '" .. tableName .. "' does not exist.")
+            end
 
-    if not fetchSuccess then
-        return false, generateError(functionName, "Failed to fetch data from DataStore.")
-    end
+            local updated = false
+            for _, record in ipairs(currentData) do
+                local matches = true
+                if conditions then
+                    for key, value in pairs(conditions) do
+                        if tostring(record[key]) ~= value then
+                            matches = false
+                            break
+                        end
+                    end
+                end
 
-    if not fetchedData and self.config.allowOverwrite then
-        fetchedData = {}
-    elseif not fetchedData and not self.config.allowOverwrite then
-        return false, generateError(functionName, "Table does not exist and overwrite is not allowed, so cannot update data.")
-    end
-
-    local updated: boolean = false
-    for _, record in ipairs(fetchedData) do
-        local matches = true
-        if conditions then
-            for key, value in pairs(conditions) do
-                if tostring(record[key]) ~= value then
-                    matches = false
-                    break
+                if matches then
+                    for key, value in pairs(setClauses) do
+                        record[key] = value
+                    end
+                    updated = true
                 end
             end
-        end
 
-        if matches then
-            for key, value in pairs(setClauses) do
-                record[key] = value
+            if not updated then
+                error("No matching records found to update.")
             end
-            updated = true
-        end
-    end
 
-    if updated then
-        local success, err = pcall(function()
-            self.datastore:UpdateAsync(tableName, fetchedData)
+            return currentData
+        end):andThen(function()
+            resolve("[rSQL] Records updated successfully.")
+        end):catch(function(err)
+            reject(generateError(functionName, "Failed to update records: " .. tostring(err)))
         end)
-        if success then
-            return true
-        else
-            return false, generateError(functionName, "Failed to set data in DataStore: " .. tostring(err))
-        end
-    else
-        return false, generateError(functionName, "No matching records found to update.")
-    end
+    end)
 end
 
 function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: string, conditions: table?): (boolean, string?)
     local functionName = "DatastoreSQL.delete"
-    local fetchSuccess: boolean, fetchedData: table = pcall(function()
-        return self.datastore:GetAsync(tableName)
-    end)
-
-    if not fetchSuccess then
-        return false, generateError(functionName, "Failed to fetch data from DataStore.")
+    
+    if not tableName or #tableName == 0 then
+        return false, generateError(functionName, "Table name cannot be empty.")
     end
 
-    if not fetchedData and self.config.allowOverwrite then
-        fetchedData = {}
-    elseif not fetchedData and not self.config.allowOverwrite then
-        return false, generateError(functionName, "Table does not exist and overwrite is not allowed, so cannot delete data.")
-    end
+    return Promise.new(function(resolve, reject)
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            if not currentData then
+                error("Table '" .. tableName .. "' does not exist.")
+            end
 
-    local originalCount: number = #fetchedData
-    local filteredData: table = {}
+            local originalCount = #currentData
+            local filteredData = {}
 
-    for _, record in ipairs(fetchedData) do
-        local matches = true
-        if conditions then
-            for key, value in pairs(conditions) do
-                if tostring(record[key]) ~= value then
-                    matches = false
-                    break
+            for _, record in ipairs(currentData) do
+                local matches = true
+                if conditions then
+                    for key, value in pairs(conditions) do
+                        if tostring(record[key]) ~= value then
+                            matches = false
+                            break
+                        end
+                    end
+                end
+
+                if not matches then
+                    table.insert(filteredData, record)
                 end
             end
-        end
 
-        if not matches then
-            table.insert(filteredData, record)
-        end
-    end
-
-    if #filteredData == originalCount then
-        return false, generateError(functionName, "No matching records found to delete.")
-    elseif #filteredData == 0 then
-        return false, generateError(functionName, "All records deleted.")
-    else
-        local success, err = pcall(function()
-            self.datastore:SetAsync(tableName, filteredData)
+            if #filteredData == originalCount then
+                error("No matching records found to delete.")
+            elseif #filteredData == 0 then
+                return {}
+            else
+                return filteredData
+            end
+        end):andThen(function()
+            resolve("[rSQL] Records deleted successfully.")
+        end):catch(function(err)
+            reject(generateError(functionName, "Failed to delete records: " .. tostring(err)))
         end)
-        if success then
-            return true
-        else
-            return false, generateError(functionName, "Failed to set data in DataStore: " .. tostring(err))
-        end
-    end
+    end)
 end
 
 function DatastoreSQL.split(self: Types.DatastoreSQLConnection, inputStr: string, sep: string): table
