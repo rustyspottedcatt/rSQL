@@ -222,16 +222,20 @@ function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName:
     end
 
     return Promise.new(function(resolve, reject)
-        self.datastore:UpdateAsync(tableName, function(currentData)
-            if currentData then
-                error("Table '" .. tableName .. "' already exists.")
-            end
-            return {}
-        end):andThen(function()
-            resolve("[rSQL] Table '" .. tableName .. "' created successfully.")
-        end):catch(function(err)
-            reject(generateError(functionName, "Failed to create table: " .. tostring(err)))
+        local updateSuccess, updateError = pcall(function()
+            self.datastore:UpdateAsync(tableName, function(currentData)
+                if currentData then
+                    error("Table '" .. tableName .. "' already exists.")
+                end
+                return {}
+            end)
         end)
+
+        if updateSuccess then
+            resolve(true, "[rSQL] Table '" .. tableName .. "' created successfully.")
+        else
+            reject(generateError(functionName, "Failed to create table: " .. tostring(updateError)))
+        end
     end)
 end
 
@@ -266,16 +270,20 @@ function DatastoreSQL.truncateTable(self: Types.DatastoreSQLConnection, tableNam
         return false, generateError(functionName, "Table name cannot be empty.")
     end
     return Promise.new(function(resolve, reject)
-        self.datastore:UpdateAsync(tableName, function(currentData)
-            if not currentData then
-                error("Table '" .. tableName .. "' does not exist.")
-            end
-            return {}
-        end):andThen(function()
-            resolve("[rSQL] Table '" .. tableName .. "' truncated successfully.")
-        end):catch(function(err)
-            reject(generateError(functionName, "Failed to truncate table: " .. tostring(err)))
+        local updateSuccess, updateError = pcall(function()
+            return self.datastore:UpdateAsync(tableName, function(currentData)
+                if not currentData then
+                    error("Table '" .. tableName .. "' does not exist.")
+                end
+                return {}
+            end)
         end)
+
+        if updateSuccess then
+            resolve("[rSQL] Table '" .. tableName .. "' truncated successfully.")
+        else
+            reject(generateError(functionName, "Failed to truncate table: " .. tostring(updateError)))
+        end
     end)
 end
 
@@ -285,21 +293,30 @@ function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: stri
         return false, generateError(functionName, "Number of columns and values do not match.")
     end
 
-    local record = {}
-    for i, column in ipairs(columns) do
-        record[column] = values[i]
-    end
-
     return Promise.new(function(resolve, reject)
-        self.datastore:UpdateAsync(tableName, function(currentData)
-            currentData = currentData or {}
-            table.insert(currentData, record)
-            return currentData
-        end):andThen(function()
-            resolve("[rSQL] Data inserted successfully.")
-        end):catch(function(err)
-            reject(generateError(functionName, "Failed to insert data: " .. tostring(err)))
+        if #columns ~= #values then
+            reject(generateError(functionName, "Number of columns and values do not match."))
+            return
+        end
+
+        local record = {}
+        for i, column in ipairs(columns) do
+            record[column] = values[i]
+        end
+
+        local updateSuccess, updateError = pcall(function()
+            self.datastore:UpdateAsync(tableName, function(currentData)
+                currentData = currentData or {}
+                table.insert(currentData, record)
+                return currentData
+            end)
         end)
+
+        if updateSuccess then
+            resolve(true, "[rSQL] Data inserted successfully.")
+        else
+            reject(generateError(functionName, "Failed to insert data: " .. tostring(updateError)))
+        end
     end)
 end
 
@@ -348,41 +365,45 @@ end
 function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: string, setClauses: table, conditions: table?): Types.TypedPromise<(boolean, string?)>
     local functionName = "DatastoreSQL.update"
     return Promise.new(function(resolve, reject)
-        self.datastore:UpdateAsync(tableName, function(currentData)
-            if not currentData then
-                error("Table '" .. tableName .. "' does not exist.")
-            end
+        local updateSuccess, updateError = pcall(function()
+            self.datastore:UpdateAsync(tableName, function(currentData)
+                if not currentData then
+                    error("Table '" .. tableName .. "' does not exist.")
+                end
 
-            local updated = false
-            for _, record in ipairs(currentData) do
-                local matches = true
-                if conditions then
-                    for key, value in pairs(conditions) do
-                        if tostring(record[key]) ~= value then
-                            matches = false
-                            break
+                local updated = false
+                for _, record in ipairs(currentData) do
+                    local matches = true
+                    if conditions then
+                        for key, value in pairs(conditions) do
+                            if tostring(record[key]) ~= value then
+                                matches = false
+                                break
+                            end
                         end
                     end
-                end
 
-                if matches then
-                    for key, value in pairs(setClauses) do
-                        record[key] = value
+                    if matches then
+                        for key, value in pairs(setClauses) do
+                            record[key] = value
+                        end
+                        updated = true
                     end
-                    updated = true
                 end
-            end
 
-            if not updated then
-                error("No matching records found to update.")
-            end
+                if not updated then
+                    error("No matching records found to update.")
+                end
 
-            return currentData
-        end):andThen(function()
-            resolve("[rSQL] Records updated successfully.")
-        end):catch(function(err)
-            reject(generateError(functionName, "Failed to update records: " .. tostring(err)))
+                return currentData
+            end)
         end)
+
+        if updateSuccess then
+            resolve(true, "[rSQL] Records updated successfully.")
+        else
+            reject(generateError(functionName, "Failed to update records: " .. tostring(updateError)))
+        end
     end)
 end
 
@@ -394,42 +415,44 @@ function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: stri
     end
 
     return Promise.new(function(resolve, reject)
-        self.datastore:UpdateAsync(tableName, function(currentData)
-            if not currentData then
-                error("Table '" .. tableName .. "' does not exist.")
-            end
+        local updateSuccess, updateError = pcall(function()
+            self.datastore:UpdateAsync(tableName, function(currentData)
+                if not currentData then
+                    error("Table '" .. tableName .. "' does not exist.")
+                end
 
-            local originalCount = #currentData
-            local filteredData = {}
+                local originalCount = #currentData
+                local filteredData = {}
 
-            for _, record in ipairs(currentData) do
-                local matches = true
-                if conditions then
-                    for key, value in pairs(conditions) do
-                        if tostring(record[key]) ~= value then
-                            matches = false
-                            break
+                for _, record in ipairs(currentData) do
+                    local matches = true
+                    if conditions then
+                        for key, value in pairs(conditions) do
+                            if tostring(record[key]) ~= value then
+                                matches = false
+                                break
+                            end
                         end
+                    end
+
+                    if not matches then
+                        table.insert(filteredData, record)
                     end
                 end
 
-                if not matches then
-                    table.insert(filteredData, record)
+                if #filteredData == originalCount then
+                    error("No matching records found to delete.")
                 end
-            end
 
-            if #filteredData == originalCount then
-                error("No matching records found to delete.")
-            elseif #filteredData == 0 then
-                return {}
-            else
                 return filteredData
-            end
-        end):andThen(function()
-            resolve("[rSQL] Records deleted successfully.")
-        end):catch(function(err)
-            reject(generateError(functionName, "Failed to delete records: " .. tostring(err)))
+            end)
         end)
+
+        if updateSuccess then
+            resolve(true, "[rSQL] Records deleted successfully.")
+        else
+            reject(generateError(functionName, "Failed to delete records: " .. tostring(updateError)))
+        end
     end)
 end
 
