@@ -12,7 +12,7 @@ favicon = "/favicon.png"
 
 [footer]
 style = "dark"
-copyright = "Copyright © ${new Date().getFullYear()} Your Organization. Built with Moonwave and Docusaurus"
+copyright = "Copyright © 2024 rSQL. Built with Moonwave and Docusaurus"
 
 [home]
 enabled = true
