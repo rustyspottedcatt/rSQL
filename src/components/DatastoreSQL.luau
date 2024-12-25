@@ -408,7 +408,7 @@ function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: stri
 
     if updated then
         local success, err = pcall(function()
-            self.datastore:SetAsync(tableName, fetchedData)
+            self.datastore:UpdateAsync(tableName, fetchedData)
         end)
         if success then
             return true
