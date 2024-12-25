@@ -175,7 +175,6 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
         
                 local conditions = nil
                 if conditionsStr then
-                    print("Debug: Raw WHERE Clause: ", conditionsStr)
                     conditions = self:parseConditions(conditionsStr)
                     for key, value in pairs(conditions) do
                         conditions[key] = stripQuotes(value)

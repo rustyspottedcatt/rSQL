@@ -123,8 +123,8 @@ end
     @param query Types.SQLQuery - The SQL query string to parse.
     @return string, string, table, table, table - Parsed components of the SQL query.
 ]]
-function ProfileSQL.parseSQL(self: Types.ProfileSQLConnection, query: Types.SQLQuery)
-    local functionName = "ProfileSQL.parseSQL"
+function ProfileSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.SQLQuery)
+    local functionName = "DatastoreSQL.parseSQL"
     local command = extractCommand(query)
 
     local createPattern = "^CREATE%s+TABLE%s+([%w_]+)%s*%(([%w_,%s]+)%)$"
@@ -132,7 +132,7 @@ function ProfileSQL.parseSQL(self: Types.ProfileSQLConnection, query: Types.SQLQ
     local truncatePattern = "^TRUNCATE%s+TABLE%s+([%w_]+)%s*$"
     local insertPattern = "^INSERT%s+INTO%s+([%w_]+)%s*%(([%w_,%s]+)%)%s*VALUES%s*%(([%w%s',]+)%)$"
     local selectPattern = [[SELECT%s+(.-)%s+FROM%s+(%S+)%s*WHERE%s*(.+)]]
-    local updatePattern = [[UPDATE%s+(%S+)%s+SET%s+(.-)%s*WHERE%s*(.+)]]
+    local updatePattern = [[UPDATE%s+([%w_]+)%s+SET%s+([^WHERE]+)%s+WHERE%s+(.+)]]
     local deletePattern = [[DELETE%s+FROM%s+(%S+)%s+WHERE%s+(.+)]]
 
     local function stripQuotes(s: string): string
@@ -188,7 +188,6 @@ function ProfileSQL.parseSQL(self: Types.ProfileSQLConnection, query: Types.SQLQ
         if #selectMatch >= 2 then
             local columnsStr, tableName, conditionsStr = selectMatch[1], selectMatch[2], selectMatch[3]
             local columns = self:split(columnsStr, ",")
-
             local conditions = nil
             if conditionsStr then
                 conditions = self:parseConditions(conditionsStr)
@@ -196,35 +195,36 @@ function ProfileSQL.parseSQL(self: Types.ProfileSQLConnection, query: Types.SQLQ
                     conditions[key] = stripQuotes(value)
                 end
             end
-
             return "SELECT", tableName, columns, nil, conditions
         else
             print("SELECT pattern did not match. Expected at least 2 captures, got:", #selectMatch)
             error(generateError(functionName, "SELECT query did not match the expected pattern."))
         end
-    elseif command == "UPDATE" then
-        local updateMatch = { string.match(query, updatePattern) }
-        if #updateMatch >= 3 then
-            local tableName, setStr, conditionsStr = updateMatch[1], updateMatch[2], updateMatch[3]
-            local setClauses = self:parseSetClause(setStr)
+        elseif command == "UPDATE" then
+            local updateMatch = { string.match(query, updatePattern) }
+        
+            if #updateMatch >= 3 then
+                local tableName, setStr, conditionsStr = updateMatch[1], updateMatch[2], updateMatch[3]
 
-            for key, value in pairs(setClauses) do
-                setClauses[key] = stripQuotes(value)
-            end
-
-            local conditions = nil
-            if conditionsStr then
-                conditions = self:parseConditions(conditionsStr)
-                for key, value in pairs(conditions) do
-                    conditions[key] = stripQuotes(value)
+                local setClauses = self:parseSetClause(setStr)
+        
+                for key, value in pairs(setClauses) do
+                    setClauses[key] = stripQuotes(value)
                 end
+        
+                local conditions = nil
+                if conditionsStr then
+                    conditions = self:parseConditions(conditionsStr)
+                    for key, value in pairs(conditions) do
+                        conditions[key] = stripQuotes(value)
+                    end
+                end
+        
+                return "UPDATE", tableName, nil, nil, setClauses, conditions
+            else
+                print("UPDATE pattern did not match. Expected 3 captures, got:", #updateMatch)
+                error(generateError(functionName, "UPDATE query did not match the expected pattern."))
             end
-
-            return "UPDATE", tableName, setClauses, nil, conditions
-        else
-            print("UPDATE pattern did not match. Expected 3 captures, got:", #updateMatch)
-            error(generateError(functionName, "UPDATE query did not match the expected pattern."))
-        end
     elseif command == "DELETE" then
         local deleteMatch = { string.match(query, deletePattern) }
         if #deleteMatch >= 2 then
@@ -248,6 +248,7 @@ function ProfileSQL.parseSQL(self: Types.ProfileSQLConnection, query: Types.SQLQ
         error(generateError(functionName, "Unsupported SQL command: " .. command))
     end
 end
+
 
 --[[
     Creates a new table in the profiles table.
@@ -577,15 +578,15 @@ end
     @param setStr string - The SET clause string to parse.
     @return table - A table containing the parsed SET clauses.
 ]]
-function ProfileSQL.parseSetClause(self: Types.ProfileSQLConnection, setStr: string): table
-    local functionName = "ProfileSQL.parseSetClause"
+function ProfileSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr: string): table
     local setClauses = {}
-    for key, value in string.gmatch(setStr, "(%w+)%s*=%s*'?(%w+)'?") do
-        setClauses[key] = value
+    for key, value in string.gmatch(setStr, "(%w+)%s*=%s*([^,]+)") do
+        setClauses[key] = self:stripQuotes(value:match("^%s*(.-)%s*$"))
     end
     if next(setClauses) == nil then
-        error(generateError(functionName, "Failed to parse SET clause: No valid key-value pairs found."))
+        error("Failed to parse SET clause: No valid key-value pairs found.")
     end
+    print("Debug: Parsed SET Clauses: ", setClauses)
     return setClauses
 end
 
