@@ -1,12 +1,12 @@
 {
-	"name": "RoLLM",
+	"name": "rSQL",
 	"tree": {
 		"$className": "DataModel",
 		"ReplicatedStorage": {
 			"$className": "ReplicatedStorage",
 			"Packages": {
 				"$path": "Packages",
-				"RoLLM": {	
+				"rSQL": {	
 					"$path": "src"
 				}
 			}
