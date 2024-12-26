@@ -35,7 +35,7 @@ end
     @param query string - The SQL query string.
     @return string - The extracted SQL command in uppercase.
 ]]
-local function extractCommand(query)
+local function _extractCommand(query)
     local command = query:match("^(%w+)")
     return command and command:upper() or ""
 end
@@ -123,7 +123,7 @@ end
     @param columnDetails table - The table of the column to drop.
     @return boolean, string? - Success status and a message.
 ]]
-function ProfileSQL.alterTableDropColumn(self: Types.ProfileSQLConnection, tableName: string, columnDetails : table): (boolean, string?)
+function ProfileSQL.alterTableDropColumn(self: Types.ProfileSQLConnection, tableName: string, columnDetails : {any}): (boolean, string?)
     local functionName = "DatastoreSQL.alterTableDropColumn"
     local columnName = columnDetails[1]
 
@@ -165,9 +165,9 @@ end
     @param columnDetails table - A table containing the column name and type.
     @return boolean, string? - Success status and a message.
 ]]
-function ProfileSQL.alterTableAddColumn(self: Types.ProfileSQLConnection, tableName: string, columnDetails: table): (boolean, string?)
+function ProfileSQL.alterTableAddColumn(self: Types.ProfileSQLConnection, tableName: string, columnDetails: {any}): (boolean, string?)
     local functionName = "DatastoreSQL.alterTableAddColumn"
-    local columnName, columnType = columnDetails[1], columnDetails[2]
+    local columnName, _columnType = columnDetails[1], columnDetails[2]
 
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
@@ -206,7 +206,7 @@ end
     @param columns table - A table of column names.
     @return boolean, string? - Success status and a message.
 ]]
-function ProfileSQL.createTable(self: Types.ProfileSQLConnection, tableName: string, columns: table): (boolean, string?)
+function ProfileSQL.createTable(self: Types.ProfileSQLConnection, tableName: string, columns: {any}): (boolean, string?)
     local functionName = "ProfileSQL.createTable"
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
@@ -288,7 +288,7 @@ end
     @param values table - A table of values corresponding to the columns.
     @return boolean, string? - Success status and a message.
 ]]
-function ProfileSQL.insert(self: Types.ProfileSQLConnection, tableName: string, columns: table, values: table): (boolean, string?)
+function ProfileSQL.insert(self: Types.ProfileSQLConnection, tableName: string, columns: {any}, values: {any}): (boolean, string?)
     local functionName = "ProfileSQL.insert"
     if #columns ~= #values then
         return false, generateError(functionName, "Number of columns and values do not match.")
@@ -345,9 +345,9 @@ end
     @param orderBy table? - A table of columns to order the results by.
     @param limit number? - The maximum number of records to return.
     @param distinct boolean? - Whether to return distinct records.
-    @return Types.SQLQueryResult - SQL query result.
+    @return (string, any) - SQL query result.
 ]]
-function ProfileSQL.select(self: Types.ProfileSQLConnection, tableName: string, columns: table, conditions: table?, orderBy: table?, limit: number?, distinct: boolean?): Types.SQLQueryResult
+function ProfileSQL.select(self: Types.ProfileSQLConnection, tableName: string, columns: {any}, conditions: {any}?, orderBy: {any}?, limit: number?, distinct: boolean?): (boolean, any?)
     local functionName = "ProfileSQL.select"
     local fetchSuccess, fetchedData = pcall(function()
         return self.profilesTable.Data[tableName]
@@ -439,7 +439,7 @@ function ProfileSQL.select(self: Types.ProfileSQLConnection, tableName: string, 
     if #results == 0 then
         return false, generateError(functionName, "No matching records found.")
     else
-        return "[rSQL] Records successfully fetched.", results
+        return true, results
     end
 end
 
@@ -452,7 +452,7 @@ end
     @param conditions table? - A table of conditions for filtering records.
     @return boolean, string? - Success status and a message.
 ]]
-function ProfileSQL.update(self: Types.ProfileSQLConnection, tableName: string, setClauses: table, conditions: table?): Types.TypedPromise<(boolean, string?)>
+function ProfileSQL.update(self: Types.ProfileSQLConnection, tableName: string, setClauses: {any}, conditions: {any}?): (boolean, string?)
     local functionName = "ProfileSQL.update"
 
     local updateSuccess, updateError = pcall(function()
@@ -466,9 +466,9 @@ function ProfileSQL.update(self: Types.ProfileSQLConnection, tableName: string, 
             for _, record in ipairs(currentData) do
                 local matches = true
 
-                for _, condition in ipairs(conditions) do
+                for _, condition in ipairs(conditions or {}) do
                     local column = condition.column
-                    local operator = condition.operator
+                    local _operator = condition.operator
                     local value = condition.value
 
                     if tostring(record[column]) ~= tostring(value) then
@@ -511,7 +511,7 @@ end
     @param conditions table? - A table of conditions for filtering records.
     @return boolean, string? - Success status and a message.
 ]]
-function ProfileSQL.delete(self: Types.ProfileSQLConnection, tableName: string, conditions: table?): (boolean, string?)
+function ProfileSQL.delete(self: Types.ProfileSQLConnection, tableName: string, conditions: {any}?): (boolean, string?)
     local functionName = "ProfileSQL.delete"
 
     if not tableName or #tableName == 0 then
@@ -588,7 +588,7 @@ end
     @param sep string - The separator to split by.
     @return table - A table of split substrings.
 ]]
-function ProfileSQL.split(self: Types.ProfileSQLConnection, inputStr: string, sep: string): table
+function ProfileSQL.split(self: Types.ProfileSQLConnection, inputStr: string, sep: string): {any}
     local result = {}
     for str in string.gmatch(inputStr, "([^" .. sep .. "]+)") do
         table.insert(result, self:trim(str))
@@ -614,7 +614,7 @@ end
     @param conditionStr string - The WHERE clause string to parse.
     @return table - A table containing the parsed conditions.
 ]]
-function ProfileSQL.parseConditions(self: Types.ProfileSQLConnection, conditionStr: string): table
+function ProfileSQL.parseConditions(self: Types.ProfileSQLConnection, conditionStr: string): {any}
     local functionName = "ProfileSQL.parseConditions"
     local conditions = {}
     for key, value in string.gmatch(conditionStr, "(%w+)%s*=%s*'?(%w+)'?") do

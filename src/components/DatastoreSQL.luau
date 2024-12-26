@@ -139,7 +139,7 @@ end
     @param columns table - A table of column names.
     @return boolean, string? - Success status and a message.
 ]]
-function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName: string, columns: table): (boolean, string?)
+function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName: string, columns: {any}): (boolean, string?)
     local functionName = "DatastoreSQL.createTable"
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
@@ -238,7 +238,7 @@ end
     @param values table - A table of values corresponding to the columns.
     @return boolean, string? - Success status and a message.
 ]]
-function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: string, columns: table, values: table): (boolean, string?)
+function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: string, columns: {any}, values: {any}): (boolean, string?)
     local functionName = "DatastoreSQL.insert"
     if #columns ~= #values then
         return false, generateError(functionName, "Number of columns and values do not match.")
@@ -297,11 +297,11 @@ end
     @param orderBy table? - A table of columns to order the results by.
     @param limit number? - The maximum number of records to return.
     @param distinct boolean? - Whether to return distinct records.
-    @return Types.SQLQueryResult - SQL query result.
+    @return (boolean, any?) - SQL query result.
 ]]
-function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: string, columns: table, conditions: table?, orderBy: table?, limit: number?, distinct: boolean?): Types.SQLQueryResult
+function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: string, columns: {any}, conditions: {any}?, orderBy: {any}?, limit: number?, distinct: boolean?): (boolean, any?)
     local functionName = "DatastoreSQL.select"
-    local fetchSuccess, fetchedData: table = pcall(function()
+    local fetchSuccess, fetchedData: {any} = pcall(function()
         return self.datastore:GetAsync(tableName)
     end)
 
@@ -309,10 +309,10 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
         return false, generateError(functionName, "Failed to fetch data from DataStore.")
     end
 
-    local results: table = {}
+    local results: {any} = {}
 
     if conditions then
-        for _, condition in ipairs(conditions) do
+        for _, condition in ipairs(conditions or {}) do
             condition.value = self:stripQuotes(condition.value)
         end
     end
@@ -325,7 +325,7 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
         end
 
         if conditions then
-            for _, condition in ipairs(conditions) do
+            for _, condition in ipairs(conditions or {}) do
                 if tostring(record[condition.column]) ~= condition.value then
                     match = false
                     break
@@ -391,7 +391,7 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
     if #results == 0 then
         return false, generateError(functionName, "No matching records found.")
     else
-        return "[rSQL] Records successfully fetched.", results
+        return true, results
     end
 end
 
@@ -406,7 +406,7 @@ end
     @param conditions table? - A table of conditions for filtering records.
     @return boolean, string? - Success status and a message.
 ]]
-function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: string, setClauses: table, conditions: table?): Types.TypedPromise<(boolean, string?)>
+function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: string, setClauses: {any}, conditions: {any}?): (boolean, string?)
     local functionName = "DatastoreSQL.update"
 
     local updateSuccess, updateError = pcall(function()
@@ -420,9 +420,9 @@ function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: stri
             for _, record in ipairs(currentData) do
                 local matches = true
 
-                for _, condition in ipairs(conditions) do
+                for _, condition in ipairs(conditions or {}) do
                     local column = condition.column
-                    local operator = condition.operator
+                    local _operator = condition.operator
                     local value = condition.value
 
                     if tostring(record[column]) ~= tostring(value) then
@@ -466,7 +466,7 @@ end
     @param conditions table? - A table of conditions for filtering records.
     @return boolean, string? - Success status and a message.
 ]]
-function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: string, conditions: table?): (boolean, string?)
+function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: string, conditions: {any}?): (boolean, string?)
     local functionName = "DatastoreSQL.delete"
 
     if not tableName or #tableName == 0 then
@@ -534,8 +534,8 @@ end
     @param sep string - The separator to split by.
     @return table - A table of split substrings.
 ]]
-function DatastoreSQL.split(self: Types.DatastoreSQLConnection, inputStr: string, sep: string): table
-    local result: table = {}
+function DatastoreSQL.split(self: Types.DatastoreSQLConnection, inputStr: string, sep: string): {any}
+    local result: {any} = {}
     for str in string.gmatch(inputStr, "([^" .. sep .. "]+)") do
         table.insert(result, self:trim(str))
     end
@@ -562,7 +562,7 @@ end
     @param conditionStr string - The WHERE clause string to parse.
     @return table - A table containing the parsed conditions.
 ]]
-function DatastoreSQL.parseConditions(self: Types.DatastoreSQLConnection, conditionStr: string): table
+function DatastoreSQL.parseConditions(self: Types.DatastoreSQLConnection, conditionStr: string): {any}
     local functionName = "DatastoreSQL.parseConditions"
     local conditions = {}
     for key, value in string.gmatch(conditionStr, "(%w+)%s*=%s*'?(%w+)'?") do
@@ -594,7 +594,7 @@ end
     @param setStr string - The SET clause string to parse.
     @return table - A table containing the parsed SET clauses.
 ]]
-function DatastoreSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr: string): table
+function DatastoreSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr: string): {any}
     local setClauses = {}
     for key, value in string.gmatch(setStr, "(%w+)%s*=%s*([^,]+)") do
         setClauses[key] = self:stripQuotes(value:match("^%s*(.-)%s*$"))
@@ -614,9 +614,9 @@ end
     @param columnDetails table - A table containing the column name and type.
     @return boolean, string? - Success status and a message.
 ]]
-function DatastoreSQL.alterTableAddColumn(self: Types.DatastoreSQLConnection, tableName: string, columnDetails: table): (boolean, string?)
+function DatastoreSQL.alterTableAddColumn(self: Types.DatastoreSQLConnection, tableName: string, columnDetails: {any}): (boolean, string?)
     local functionName = "DatastoreSQL.alterTableAddColumn"
-    local columnName, columnType = columnDetails[1], columnDetails[2]
+    local columnName, _columnType = columnDetails[1], columnDetails[2]
 
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
@@ -656,7 +656,7 @@ end
     @param columnDetails table - The table of the column to drop.
     @return boolean, string? - Success status and a message.
 ]]
-function DatastoreSQL.alterTableDropColumn(self: Types.DatastoreSQLConnection, tableName: string, columnDetails : table): (boolean, string?)
+function DatastoreSQL.alterTableDropColumn(self: Types.DatastoreSQLConnection, tableName: string, columnDetails : {any}): (boolean, string?)
     local functionName = "DatastoreSQL.alterTableDropColumn"
     local columnName = columnDetails[1]
 

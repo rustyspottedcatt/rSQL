@@ -8,7 +8,7 @@ autoSectionPath = "packages"
 onBrokenLinks = "throw"
 onBrokenMarkdownLinks = "warn"
 url = "https://rustyspottedcatt.github.io"
-baseUrl = "/"
+baseUrl = "/rSQL/"
 favicon = "/favicon.png"
 
 [footer]

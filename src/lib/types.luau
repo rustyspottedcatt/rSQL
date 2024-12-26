@@ -6,8 +6,6 @@
 
 export type SQLQuery = string
 
-export type SQLQueryResult = { any }
-
 export type DatastoreSQLConfig = {
     allowOverwrite: boolean,
     allowInsert: boolean,
@@ -80,13 +78,13 @@ export type DataStore = {
 export type DatastoreSQLConnection = {
     datastore: DataStore,
     config: DatastoreSQLConfig,
-    query: (self: DatastoreSQLConnection, query: SQLQuery) -> TypedPromise<SQLQueryResult>,
+    query: (self: DatastoreSQLConnection, query: SQLQuery) -> (boolean, any?),
     parseSQL: (self: DatastoreSQLConnection, query: SQLQuery) -> any,
     createTable: (self: DatastoreSQLConnection, tableName: string, columns: {string}) -> (boolean, string?),
     dropTable: (self: DatastoreSQLConnection, tableName: string) -> (boolean, string?),
     truncateTable: (self: DatastoreSQLConnection, tableName: string) -> (boolean, string?),
     insert: (self: DatastoreSQLConnection, tableName: string, columns: {string}, values: {any}) -> (boolean, string?),
-    select: (self: DatastoreSQLConnection, tableName: string, columns: {string}, conditions: {any}?, orderBy: {string}?, limit: number?, distinct: boolean?) -> (SQLQueryResult?, string?),
+    select: (self: DatastoreSQLConnection, tableName: string, columns: {string}, conditions: {any}?, orderBy: {string}?, limit: number?, distinct: boolean?) -> (boolean, string?),
     update: (self: DatastoreSQLConnection, tableName: string, setClauses: {any}, conditions: {any}?) -> TypedPromise<(boolean, string?)>,
     delete: (self: DatastoreSQLConnection, tableName: string, conditions: {any}?) -> (boolean, string?),
     split: (self: DatastoreSQLConnection, inputStr: string, sep: string) -> {string},
@@ -94,19 +92,19 @@ export type DatastoreSQLConnection = {
     parseConditions: (self: DatastoreSQLConnection, conditionStr: string) -> {any},
     stripQuotes: (self: DatastoreSQLConnection, s: string) -> string,
     parseSetClause: (self: DatastoreSQLConnection, setStr: string) -> {any},
-    alterTableAddColumn: (self: DatastoreSQLConnection, tableName: string, columnDetails: table) -> (boolean, string?),
+    alterTableAddColumn: (self: DatastoreSQLConnection, tableName: string, columnDetails: {any}) -> (boolean, string?),
     alterTableDropColumn: (self: DatastoreSQLConnection, tableName: string, columnDetails: {string}) -> (boolean, string?),
 }
 export type ProfileSQLConnection = {
     profilesTable: {Data: any},
     config: DatastoreSQLConfig,
-    query: (self: ProfileSQLConnection, query: SQLQuery) -> TypedPromise<SQLQueryResult>,
+    query: (self: ProfileSQLConnection, query: SQLQuery) -> (boolean, any?),
     parseSQL: (self: ProfileSQLConnection, query: SQLQuery) -> any,
     createTable: (self: ProfileSQLConnection, tableName: string, columns: {string}) -> (boolean, string?),
     dropTable: (self: ProfileSQLConnection, tableName: string) -> (boolean, string?),
     truncateTable: (self: ProfileSQLConnection, tableName: string) -> (boolean, string?),
     insert: (self: ProfileSQLConnection, tableName: string, columns: {string}, values: {any}) -> (boolean, string?),
-    select: (self: ProfileSQLConnection, tableName: string, columns: {string}, conditions: {any}?, orderBy: {string}?, limit: number?, distinct: boolean?) -> (SQLQueryResult?, string?),
+    select: (self: ProfileSQLConnection, tableName: string, columns: {string}, conditions: {any}?, orderBy: {string}?, limit: number?, distinct: boolean?) -> (boolean, string?),
     update: (self: ProfileSQLConnection, tableName: string, setClauses: {any}, conditions: {any}?) -> TypedPromise<(boolean, string?)>,
     delete: (self: ProfileSQLConnection, tableName: string, conditions: {any}?) -> (boolean, string?),
     split: (self: ProfileSQLConnection, inputStr: string, sep: string) -> {string},
@@ -114,21 +112,21 @@ export type ProfileSQLConnection = {
     parseConditions: (self: ProfileSQLConnection, conditionStr: string) -> {any},
     stripQuotes: (self: ProfileSQLConnection, s: string) -> string,
     parseSetClause: (self: ProfileSQLConnection, setStr: string) -> {any},
-    alterTableAddColumn: (self: ProfileSQLConnection, tableName: string, columnDetails: table) -> (boolean, string?),
+    alterTableAddColumn: (self: ProfileSQLConnection, tableName: string, columnDetails: {any}) -> (boolean, string?),
     alterTableDropColumn: (self: ProfileSQLConnection, tableName: string, columnDetails: {string}) -> (boolean, string?),
 }
 
 export type DatastoreSQL = {
-    query: (self: DatastoreSQLConnection, query: SQLQuery) -> TypedPromise<SQLQueryResult>,
-    parseSQL: (self: DatastoreSQLConnection, query: SQLQuery) -> (string?, string?, table?, string?, table?),
-    insert: (self: DatastoreSQLConnection, tableName: string, columns: table, values: table) -> (boolean, string?),
-    select: (self: DatastoreSQLConnection, tableName: string, columns: table, conditions: table?) -> (SQLQueryResult?, string?),
-    update: (self: DatastoreSQLConnection, tableName: string, setClauses: table, conditions: table?) -> (boolean, string?),
-    delete: (self: DatastoreSQLConnection, tableName: string, conditions: table?) -> (boolean, string?),
-    split: (self: DatastoreSQLConnection, inputStr: string, sep: string) -> table,
+    query: (self: DatastoreSQLConnection, query: SQLQuery) -> (boolean, any?),
+    parseSQL: (self: DatastoreSQLConnection, query: SQLQuery) -> (string?, string?, {any}?, string?, {any}?),
+    insert: (self: DatastoreSQLConnection, tableName: string, columns: {any}, values: {any}) -> (boolean, string?),
+    select: (self: DatastoreSQLConnection, tableName: string, columns: {any}, conditions: {any}?) -> (boolean, string?),
+    update: (self: DatastoreSQLConnection, tableName: string, setClauses: {any}, conditions: {any}?) -> (boolean, string?),
+    delete: (self: DatastoreSQLConnection, tableName: string, conditions: {any}?) -> (boolean, string?),
+    split: (self: DatastoreSQLConnection, inputStr: string, sep: string) -> {any},
     trim: (self: DatastoreSQLConnection, s: string) -> string,
-    parseConditions: (self: DatastoreSQLConnection, conditionStr: string) -> table,
-    parseSetClause: (self: DatastoreSQLConnection, setStr: string) -> table,
+    parseConditions: (self: DatastoreSQLConnection, conditionStr: string) -> {any},
+    parseSetClause: (self: DatastoreSQLConnection, setStr: string) -> {any},
     connect: (self: DatastoreSQL, datastore: DataStore, config: DatastoreSQLConfig) -> DatastoreSQLConnection,
 }
 

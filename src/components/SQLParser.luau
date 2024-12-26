@@ -17,7 +17,7 @@ local Keywords: { string } = {
     "COLUMN", "AND", "OR", "NOT", "NULL", "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "JOIN", "ON", "GROUP", "BY", "ORDER", "HAVING", "CREATE", "TRUNCATE", "ALTER", "ADD", "DROP"
 }
 
-local function stripQuotes(value: string): string
+local function stripQuotes(value: string): string?
     return value:match("^'?(.-)'?$")
 end
 
@@ -87,7 +87,7 @@ local function parse(tokens: { Token }): ParsedQuery
     local function parseCreate(): ParsedQuery
         consume()
     
-        local tableKeyword = consume().value 
+        local _tableKeyword = consume().value 
         local tableName = consume().value
     
         local columns = {}
@@ -105,7 +105,7 @@ local function parse(tokens: { Token }): ParsedQuery
             consume() 
         end
     
-        return { type = "CREATE", tableName = tableName, columns = columns }
+        return { type = "CREATE", tableName = tableName, columns = columns, whereClause = {}, setClauses = {}, values = {}, commandOptions = {} }
     end    
 
     local function parseDrop(): ParsedQuery
@@ -116,13 +116,13 @@ local function parse(tokens: { Token }): ParsedQuery
         end
         tableName = consume().value
 
-        return { type = "DROP", tableName = tableName }
+        return { type = "DROP", tableName = tableName, columns = {}, whereClause = {}, setClauses = {}, values = {}, commandOptions = {} }
     end
 
     local function parseTruncate(): ParsedQuery
         consume()
         local tableName = consume().value
-        return { type = "TRUNCATE", tableName = tableName }
+        return { type = "TRUNCATE", tableName = tableName, columns = {}, whereClause = {}, setClauses = {}, values = {}, commandOptions = {} }
     end
 
     local function parseAlter(): ParsedQuery
@@ -145,9 +145,9 @@ local function parse(tokens: { Token }): ParsedQuery
         local columnName = consume().value 
         if alterType == "ADD" then
             local columnType = consume().value 
-            return { type = "ALTER", tableName = tableName, commandOptions = { alterType, columnName, columnType } }
+            return { type = "ALTER", tableName = tableName, columns = {}, setClauses = {}, values = {}, whereClause = {}, commandOptions = { alterType, columnName, columnType } }
         elseif alterType == "DROP" then
-            return { type = "ALTER", tableName = tableName, commandOptions = { alterType, columnName } }
+            return { type = "ALTER", tableName = tableName, columns = {}, setClauses = {}, values = {}, whereClause = {}, commandOptions = { alterType, columnName } }
         else
             error("Unsupported ALTER operation: " .. alterType)
         end
@@ -178,7 +178,7 @@ local function parse(tokens: { Token }): ParsedQuery
                 table.insert(whereClause, { column = column, operator = operator, value = value })
             until not peek() or peek().value == ";"
         end
-        return { type = "SELECT", columns = columns, tableName = tableName, whereClause = whereClause }
+        return { type = "SELECT", columns = columns, tableName = tableName, whereClause = whereClause, setClauses = {}, values = {}, commandOptions = {} }
     end
 
     local function parseInsert(): ParsedQuery
@@ -212,7 +212,7 @@ local function parse(tokens: { Token }): ParsedQuery
             until peek().value == ")"
             consume()
         end
-        return { type = "INSERT", tableName = tableName, columns = columns, values = values }
+        return { type = "INSERT", tableName = tableName, columns = columns, values = values, setClauses = {}, whereClause = {}, commandOptions = {} }
     end
 
     local function parseUpdate(): ParsedQuery
@@ -239,9 +239,9 @@ local function parse(tokens: { Token }): ParsedQuery
 
                 table.insert(whereClause, { column = column, operator = operator, value = value })
             until not peek() or peek().value == ";"
-            return { type = "UPDATE", tableName = tableName, setClauses = setClauses, whereClause = whereClause }
+            return { type = "UPDATE", tableName = tableName, setClauses = setClauses, whereClause = whereClause, columns = {}, values = {}, commandOptions = {} }
         end
-        return { type = "UPDATE", tableName = tableName, setClauses = setClauses, whereClause = {} }
+        return { type = "UPDATE", tableName = tableName, setClauses = setClauses, whereClause = {}, columns = {}, values = {}, commandOptions = {} }
     end
 
     local function parseDelete(): ParsedQuery
@@ -260,7 +260,7 @@ local function parse(tokens: { Token }): ParsedQuery
                 table.insert(whereClause, { column = column, operator = operator, value = value })
             until not peek() or peek().value == ";"
         end
-        return { type = "DELETE", tableName = tableName, whereClause = whereClause }
+        return { type = "DELETE", tableName = tableName, whereClause = whereClause, columns = {}, setClauses = {}, values = {}, commandOptions = {} }
     end
 
     local function parseQuery(): ParsedQuery

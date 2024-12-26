@@ -63,7 +63,7 @@ function rSQL.connect(self: Types.DatastoreSQL, datastore: Types.DataStore, conf
             return reject("[rSQL] Unexpected `nil` value for `config`, expected SQLModuleConfig instance.")
         end
 
-        local SQLConnection: Types.DatastoreSQLConnection = setmetatable({
+        local SQLConnection = setmetatable({
             datastore = datastore :: Types.DataStore,
             config = config :: Types.DatastoreSQLConfig
         }, { __index = DatastoreSQL })
@@ -82,17 +82,17 @@ end
     @return Types.TypedPromise<Types.ProfileSQLConnection> - A promise that resolves with the Profile SQL connection.
 ]]
 
-function rSQL.connectToProfileService(self: Types.DatastoreSQL, profilesTable : table, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
+function rSQL.connectToProfileService(self: Types.DatastoreSQL, profilesTable : {any}, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
     return Promise.new(function(resolve, reject)
-        if not profilesTable or not typeof(profilesTable) == "table" then
+        if not profilesTable or (typeof(profilesTable) ~= "table") then
             return reject("[rSQL] Unexpected `nil` value for `profilesTable`, expected table.")
         end
         if not config then
             return reject("[rSQL] Unexpected `nil` value for `config`, expected SQLModuleConfig instance.")
         end
 
-        local SQLConnection: Types.ProfileSQLConnection = setmetatable({
-            profilesTable = profilesTable :: table,
+        local SQLConnection = setmetatable({
+            profilesTable = profilesTable :: {any},
             config = config :: Types.DatastoreSQLConfig
         }, { __index = ProfileSQL })
 
@@ -110,17 +110,17 @@ end
     @return Types.TypedPromise<Types.ProfileSQLConnection> - A promise that resolves with the Profile SQL connection.
 ]]
 
-function rSQL.connectToDatakeep(self: Types.DatastoreSQL, profilesTable : table, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
+function rSQL.connectToDatakeep(self: Types.DatastoreSQL, profilesTable : {any}, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
     return Promise.new(function(resolve, reject)
-        if not profilesTable or not typeof(profilesTable) == "table" then
+        if not profilesTable or typeof(profilesTable) ~= "table" then
             return reject("[rSQL] Unexpected `nil` value for `profilesTable`, expected table.")
         end
         if not config then
             return reject("[rSQL] Unexpected `nil` value for `config`, expected SQLModuleConfig instance.")
         end
 
-        local SQLConnection: Types.ProfileSQLConnection = setmetatable({
-            profilesTable = profilesTable :: table,
+        local SQLConnection = setmetatable({
+            profilesTable = profilesTable :: {any},
             config = config :: Types.DatastoreSQLConfig
         }, { __index = ProfileSQL })
 
