@@ -126,8 +126,6 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
         error(generateError(functionName, "Failed to parse SQL query: " .. tostring(astOrError)))
     end
 
-    warn("Parsed AST from SQL Parser", astOrError)
-
     return astOrError
 end
 
@@ -324,6 +322,14 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
         end
     end
 
+    warn(fetchedData)
+    warn(tableName)
+    warn(columns)
+    warn(conditions)
+    warn(orderBy)
+    warn(limit)
+    warn(distinct)
+
     for _, record in ipairs(fetchedData) do
         local match: boolean = true
 
@@ -331,14 +337,58 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
             record[key] = self:stripQuotes(value)
         end
 
+        warn("Record", record)
+
         if conditions then
-            for _, condition in ipairs(conditions or {}) do
-                if tostring(record[condition.column]) ~= condition.value then
+            for _, condition in ipairs(conditions) do
+                local columnValue = record[condition.column]
+                local operator = tostring(condition.operator)
+                local conditionValue = condition.value
+        
+                local isNumericComparison = tonumber(columnValue) and tonumber(conditionValue)
+                if isNumericComparison then
+                    columnValue = tonumber(columnValue)
+                    conditionValue = tonumber(conditionValue)
+                end
+        
+                if operator == ">" then
+                    if columnValue <= conditionValue then
+                        match = false
+                        break
+                    end
+                elseif operator == "<" then
+                    if columnValue >= conditionValue then
+                        match = false
+                        break
+                    end
+                elseif operator == ">=" then
+                    if columnValue < conditionValue then
+                        match = false
+                        break
+                    end
+                elseif operator == "<=" then
+                    if columnValue > conditionValue then
+                        match = false
+                        break
+                    end
+                elseif operator == "=" or operator == "==" then
+                    if tostring(columnValue) ~= tostring(conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif operator == "!=" then
+                    if tostring(columnValue) == tostring(conditionValue) then
+                        match = false
+                        break
+                    end
+                else
+                    warn("[rSQL] Unsupported operator in condition:", operator)
                     match = false
                     break
                 end
             end
         end
+        
 
         if match then
             if columns[1] == "*" then
@@ -427,16 +477,59 @@ function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: stri
             for _, record in ipairs(currentData) do
                 local matches = true
 
+                for key, value in pairs(record) do
+                    record[key] = self:stripQuotes(value)
+                end
+
                 for _, condition in ipairs(conditions or {}) do
                     local column = condition.column
-                    local _operator = condition.operator
-                    local value = condition.value
-
-                    if tostring(record[column]) ~= tostring(value) then
+                    local operator = tostring(condition.operator)
+                    local conditionValue = condition.value
+                    local recordValue = record[column]
+                
+                    local isNumericComparison = tonumber(recordValue) and tonumber(conditionValue)
+                    if isNumericComparison then
+                        recordValue = tonumber(recordValue)
+                        conditionValue = tonumber(conditionValue)
+                    end
+                
+                    if operator == ">" then
+                        if recordValue <= conditionValue then
+                            matches = false
+                            break
+                        end
+                    elseif operator == "<" then
+                        if recordValue >= conditionValue then
+                            matches = false
+                            break
+                        end
+                    elseif operator == ">=" then
+                        if recordValue < conditionValue then
+                            matches = false
+                            break
+                        end
+                    elseif operator == "<=" then
+                        if recordValue > conditionValue then
+                            matches = false
+                            break
+                        end
+                    elseif operator == "=" or operator == "==" then
+                        if tostring(recordValue) ~= tostring(conditionValue) then
+                            matches = false
+                            break
+                        end
+                    elseif operator == "!=" then
+                        if tostring(recordValue) == tostring(conditionValue) then
+                            matches = false
+                            break
+                        end
+                    else
+                        warn("[rSQL] Unsupported operator in condition:", operator)
                         matches = false
                         break
                     end
                 end
+                
 
                 if matches then
                     for _, setClause in ipairs(setClauses) do
@@ -499,15 +592,55 @@ function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: stri
                 local matches = true
 
                 for key, value in pairs(record) do
-                    record[key] = self:stripQuotes(value) 
+                    record[key] = self:stripQuotes(value)
                 end
 
-                if conditions then
-                    for _, condition in ipairs(conditions) do
-                        if tostring(record[condition.column]) ~= condition.value then
+                for _, condition in ipairs(conditions or {}) do
+                    local column = condition.column
+                    local operator = tostring(condition.operator)
+                    local conditionValue = condition.value
+                    local recordValue = record[column]
+                
+                    local isNumericComparison = tonumber(recordValue) and tonumber(conditionValue)
+                    if isNumericComparison then
+                        recordValue = tonumber(recordValue)
+                        conditionValue = tonumber(conditionValue)
+                    end
+                
+                    if operator == ">" then
+                        if recordValue <= conditionValue then
                             matches = false
                             break
                         end
+                    elseif operator == "<" then
+                        if recordValue >= conditionValue then
+                            matches = false
+                            break
+                        end
+                    elseif operator == ">=" then
+                        if recordValue < conditionValue then
+                            matches = false
+                            break
+                        end
+                    elseif operator == "<=" then
+                        if recordValue > conditionValue then
+                            matches = false
+                            break
+                        end
+                    elseif operator == "=" or operator == "==" then
+                        if tostring(recordValue) ~= tostring(conditionValue) then
+                            matches = false
+                            break
+                        end
+                    elseif operator == "!=" then
+                        if tostring(recordValue) == tostring(conditionValue) then
+                            matches = false
+                            break
+                        end
+                    else
+                        warn("[rSQL] Unsupported operator in condition:", operator)
+                        matches = false
+                        break
                     end
                 end
 
