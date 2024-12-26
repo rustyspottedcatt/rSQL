@@ -1,6 +1,5 @@
 title = "rSQL"
 gitRepoUrl = "https://github.com/rustyspottedcatt/rSQL" 
-
 gitSourceBranch = "main"
 changelog = true
 autoSectionPath = "packages"
@@ -8,6 +7,8 @@ autoSectionPath = "packages"
 [docusaurus]
 onBrokenLinks = "throw"
 onBrokenMarkdownLinks = "warn"
+url = "https://rustyspottedcatt.github.io"
+baseUrl = "/"
 favicon = "/favicon.png"
 
 [footer]
