@@ -121,10 +121,12 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
 }
     local functionName = "DatastoreSQL.parseSQL"
 
-    local success, astOrError = pcall(SQLParser.parse, normalizeSQL(query))
+    local success, astOrError = pcall(SQLParser.parse, normalizeSQL(self:stripQuotes(query)))
     if not success then
         error(generateError(functionName, "Failed to parse SQL query: " .. tostring(astOrError)))
     end
+
+    warn("Parsed AST from SQL Parser", astOrError)
 
     return astOrError
 end
@@ -305,8 +307,13 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
         return self.datastore:GetAsync(tableName)
     end)
 
-    if not fetchSuccess or not fetchedData then
+    if not fetchSuccess then
         return false, generateError(functionName, "Failed to fetch data from DataStore.")
+    end
+
+    if not fetchedData then
+        -- NOTE: This is not an error, just an empty result set.
+        return true, {}
     end
 
     local results: {any} = {}
@@ -582,8 +589,13 @@ end
     @param s string - The string to strip quotes from.
     @return string - The unquoted string.
 ]]
-function DatastoreSQL.stripQuotes(self: Types.DatastoreSQLConnection, s: string): string
-    return s:gsub("^'(.-)'$", "%1")
+function DatastoreSQL.stripQuotes(self: Types.DatastoreSQLConnection, value: string): string
+    local stripped = string.gsub(value, [["([^"]*)"]], "%1")
+    stripped = string.gsub(stripped, [[%'([^']*)%']], "%1")
+    
+    print("Before stripping:", value)
+    print("Stripped:", stripped)
+    return stripped
 end
 
 --[[
