@@ -1,2 +1,4 @@
-./build
-./.moonwave
+build/
+docs/
+.moonwave/
+.github/
