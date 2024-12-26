@@ -49,12 +49,11 @@ rSQL.Types = Types
     Establishes a connection to the DataStore with the provided configuration.
 
     @function connect
-    @param self Types.DatastoreSQL - The SQL module instance.
     @param datastore Types.DataStore - The DataStore instance to connect to.
     @param config Types.DatastoreSQLConfig - Configuration settings for the SQL module.
     @return Types.TypedPromise<Types.SQLConnection> - A promise that resolves with the SQL connection.
 ]]
-function rSQL.connect(self: Types.DatastoreSQL, datastore: Types.DataStore, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.DatastoreSQLConnection>
+function rSQL:connect(datastore: Types.DataStore, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.DatastoreSQLConnection>
     return Promise.new(function(resolve, reject)
         if not datastore then
             return reject("[rSQL] Unexpected `nil` value for `datastore`, expected DataStore instance.")
@@ -76,13 +75,12 @@ end
     Establishes a connection to the Profile Service with the provided configuration.
 
     @function connectToProfileService
-    @param self Types.DatastoreSQL - The SQL module instance.
     @param profilesTable table - The table containing profile data.
     @param config Types.DatastoreSQLConfig - Configuration settings for the SQL module.
     @return Types.TypedPromise<Types.ProfileSQLConnection> - A promise that resolves with the Profile SQL connection.
 ]]
 
-function rSQL.connectToProfileService(self: Types.DatastoreSQL, profilesTable : {any}, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
+function rSQL:connectToProfileService(profilesTable : {any}, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
     return Promise.new(function(resolve, reject)
         if not profilesTable or (typeof(profilesTable) ~= "table") then
             return reject("[rSQL] Unexpected `nil` value for `profilesTable`, expected table.")
@@ -104,13 +102,12 @@ end
     Establishes a connection to Datakeep with the provided configuration.
 
     @function connectToDatakeep
-    @param self Types.DatastoreSQL - The SQL module instance.
     @param profilesTable table - The table containing profile data.
     @param config Types.DatastoreSQLConfig - Configuration settings for the SQL module.
     @return Types.TypedPromise<Types.ProfileSQLConnection> - A promise that resolves with the Profile SQL connection.
 ]]
 
-function rSQL.connectToDatakeep(self: Types.DatastoreSQL, profilesTable : {any}, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
+function rSQL:connectToDatakeep(profilesTable : {any}, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
     return Promise.new(function(resolve, reject)
         if not profilesTable or typeof(profilesTable) ~= "table" then
             return reject("[rSQL] Unexpected `nil` value for `profilesTable`, expected table.")

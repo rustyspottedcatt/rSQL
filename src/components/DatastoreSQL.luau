@@ -40,7 +40,7 @@ end
     @param query string - The SQL query string.
     @return string - The extracted SQL command in uppercase.
 ]]
-local function extractCommand(query)
+local function _extractCommand(query)
     local command = query:match("^(%w+)")
     return command and command:upper() or ""
 end
@@ -53,7 +53,7 @@ end
     @param query string - The SQL query to execute.
     @return Types.TypedPromise<Types.SQLQueryResult> - A promise that resolves with the query result or rejects with an error.
 ]]
-function DatastoreSQL.query(self: Types.DatastoreSQLConnection, query: Types.SQLQuery)
+function DatastoreSQL.query(self: Types.DatastoreSQLConnection, query: Types.SQLQuery) : Types.TypedPromise<boolean?, {string? | any?}?>
     return Promise.new(function(resolve, reject)
         local functionName = "DatastoreSQL.query"
 

@@ -78,7 +78,7 @@ export type DataStore = {
 export type DatastoreSQLConnection = {
     datastore: DataStore,
     config: DatastoreSQLConfig,
-    query: (self: DatastoreSQLConnection, query: SQLQuery) -> (boolean, any?),
+    query: (self: DatastoreSQLConnection, query: SQLQuery) -> TypedPromise<boolean?, {string? | any?}?>,
     parseSQL: (self: DatastoreSQLConnection, query: SQLQuery) -> any,
     createTable: (self: DatastoreSQLConnection, tableName: string, columns: {string}) -> (boolean, string?),
     dropTable: (self: DatastoreSQLConnection, tableName: string) -> (boolean, string?),
@@ -98,7 +98,7 @@ export type DatastoreSQLConnection = {
 export type ProfileSQLConnection = {
     profilesTable: {Data: any},
     config: DatastoreSQLConfig,
-    query: (self: ProfileSQLConnection, query: SQLQuery) -> (boolean, any?),
+    query: (self: ProfileSQLConnection, query: SQLQuery) -> TypedPromise<boolean?, {string? | any?}?>,
     parseSQL: (self: ProfileSQLConnection, query: SQLQuery) -> any,
     createTable: (self: ProfileSQLConnection, tableName: string, columns: {string}) -> (boolean, string?),
     dropTable: (self: ProfileSQLConnection, tableName: string) -> (boolean, string?),
