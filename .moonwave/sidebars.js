@@ -1,10 +1,5 @@
 module.exports = {
-    rSQL: [
-      {
-        type: "doc",
-        id: "intro",
-        label: "About",
-      },
+    mySidebar: [
       {
         type: "doc",
         id: "getting-started",
@@ -12,8 +7,18 @@ module.exports = {
       },
       {
         type: "doc",
-        id: "functions",
-        label: "Functions",
+        id: "introduction",
+        label: "Introduction",
+      },
+      {
+        type: "doc",
+        id: "basic-usage",
+        label: "Basic Usage",
+      },
+      {
+        type: "doc",
+        id: "advanced-usage",
+        label: "Advanced Usage",
       }
     ],
   }

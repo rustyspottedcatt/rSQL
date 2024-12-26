@@ -1,168 +1,104 @@
 ---
-sidebar_position: 2
+sidebar_position: 1
 ---
 
-# Getting Started
+# Getting Started with rSQL
 
-Follow these steps to integrate and use the `rSQL` module in your Roblox game project.
-
----
-
-### Prerequisites
-
-1. **Dependencies**:
-   Ensure the following libraries are included in your Roblox project:
-   - [`Promise`](https://github.com/evaera/roblox-lua-promise) – A robust promise implementation for Lua.
-   - [`Signal`](https://github.com/evaera/roblox-lua-signal) – A library for creating event-driven workflows.
-
-2. **DataStoreService Permissions**:
-   - Enable **Studio Access to API Services** in Roblox Studio settings to allow DataStore usage during testing.
+Welcome to the **rSQL** module documentation. This guide will walk you through the setup and basic usage of the module.
 
 ---
 
-### Step 1: Installation
+## What is rSQL?
 
-1. Clone or download the `rSQL` module along with its dependencies into your project.
-2. Organize the module in the following structure:
-   ```
-   Packages/
-   ├── rSQL/
-   │   ├── init.luau
-   │   ├── lib/
-   │   │   ├── types.luau
-   │   ├── components/
-   │   │   ├── DatastoreSQL.luau
-   │   │   ├── ProfileSQL.luau
-   ```
+`rSQL` is a Roblox module that brings SQL-like data management capabilities to your games. With `rSQL`, you can:
 
-3. Reference the module in your scripts:
-   ```lua
-   local rSQL = require(game:GetService("ReplicatedStorage").Packages.rSQL)
-   ```
+- Create and manage virtual tables using SQL syntax.
+- Query, insert, update, and delete data with SQL-inspired commands.
+- Integrate seamlessly with Roblox DataStores for persistent storage.
+- Handle complex data structures and relationships.
 
 ---
 
-### Step 2: Configuration
+## Installation
 
-Define a configuration table to control the behavior of the `rSQL` module. Below is an example configuration:
+### Step 1: Download the Module
+
+1. Download the `rSQL` module from the official repository or marketplace.
+2. Place the module in your game’s `ReplicatedStorage` or another shared location.
+
+### Step 2: Require the Module
+
+Require the `rSQL` module in your scripts:
+
+```lua
+local rSQL = require(game.ReplicatedStorage.Packages.rSQL)
+```
+
+### Step 3: Configuration
+
+Define the configuration for your SQL operations. Example:
 
 ```lua
 local config = {
-    allowOverwrite = true,
+    allowCreate = true,
+    allowDrop = true,
     allowInsert = true,
     allowSelect = true,
     allowUpdate = true,
     allowDelete = true,
-    allowCreate = true,
-    allowDrop = false,
-    allowTruncate = false,
-    allowAlter = false,
-    allowTransaction = false,
 }
 ```
 
 ---
 
-### Step 3: Connecting to DataStore
+## Setting Up a Table
 
-Use the `connect` function to establish a connection to your DataStore:
+To use `rSQL`, you need to define and manage tables. Tables in `rSQL` simulate database tables.
+
+### Example: Creating a Table
 
 ```lua
-local DataStoreService = game:GetService("DataStoreService")
-local datastore = DataStoreService:GetDataStore("ExampleStore")
+local connection = rSQL:connect(testDatastore, config)
+connection:query("CREATE TABLE Players (Id INTEGER PRIMARY KEY, Name TEXT, Score INTEGER)")
+```
 
-rSQL:connect(datastore, config)
-    :andThen(function(connection)
-        print("Connected to DataStore!")
-        -- Save the connection for future queries
-        _G.dbConnection = connection
-    end)
-    :catch(function(error)
-        warn("Failed to connect: " .. error)
-    end)
+### Explanation:
+- **`CREATE TABLE`**: Creates a new table.
+- **`Players`**: Table name.
+- **Columns**: `Id`, `Name`, and `Score` define the schema.
+
+---
+
+## Basic Queries
+
+### Inserting Data
+```lua
+connection:query("INSERT INTO Players (Id, Name, Score) VALUES (1, 'Carlos', 5000)")
+```
+
+### Selecting Data
+```lua
+connection:query("SELECT Name, Score FROM Players WHERE Score > 1000")
+```
+
+### Updating Data
+```lua
+connection:query("UPDATE Players SET Score = 6000 WHERE Id = 1")
+```
+
+### Deleting Data
+```lua
+connection:query("DELETE FROM Players WHERE Id = 1")
 ```
 
 ---
 
-### Step 4: Running Queries
+## Next Steps
 
-After establishing a connection, use SQL-like commands to manage your data.
+Once you’re comfortable with the basics, explore the following:
 
-#### Creating a Table
-```lua
-_G.dbConnection:query("CREATE TABLE Players (ID, Name, Score)")
-    :andThen(function(result)
-        print("Table created successfully!")
-    end)
-    :catch(function(error)
-        warn("Failed to create table: " .. error)
-    end)
-```
+- [Introduction](./introduction.md)
+- [Basic Usage](./basic-usage.md)
+- [Advanced Usage](./advanced-usage.md)
 
-#### Inserting Data
-```lua
-_G.dbConnection:query("INSERT INTO Players (Name, Score) VALUES ('Player1', 100)")
-    :andThen(function(result)
-        print("Data inserted successfully!")
-    end)
-    :catch(function(error)
-        warn("Failed to insert data: " .. error)
-    end)
-```
 
-#### Retrieving Data
-```lua
-_G.dbConnection:query("SELECT * FROM Players WHERE Score > 50")
-    :andThen(function(results)
-        for _, player in ipairs(results) do
-            print("Player:", player.Name, "Score:", player.Score)
-        end
-    end)
-    :catch(function(error)
-        warn("Failed to retrieve data: " .. error)
-    end)
-```
-
-#### Updating Data
-```lua
-_G.dbConnection:query("UPDATE Players SET Score = 200 WHERE Name = 'Player1'")
-    :andThen(function(result)
-        print("Data updated successfully!")
-    end)
-    :catch(function(error)
-        warn("Failed to update data: " .. error)
-    end)
-```
-
-#### Deleting Data
-```lua
-_G.dbConnection:query("DELETE FROM Players WHERE Score < 100")
-    :andThen(function(result)
-        print("Data deleted successfully!")
-    end)
-    :catch(function(error)
-        warn("Failed to delete data: " .. error)
-    end)
-```
-
----
-
-### Step 5: Connecting to ProfileService
-
-If you’re managing player profiles, use the `connectToProfileService` method instead:
-
-```lua
-local profilesTable = {}
-
-rSQL:connectToProfileService(profilesTable, config)
-    :andThen(function(connection)
-        print("Connected to ProfileService!")
-        -- Save the connection for future queries
-        _G.profileConnection = connection
-    end)
-    :catch(function(error)
-        warn("Failed to connect: " .. error)
-    end)
-```
-
-ProfileService queries follow the same format as DataStore queries.
