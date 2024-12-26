@@ -110,7 +110,15 @@ end
     @param query string - The SQL query to parse.
     @return table - Parsed AST representing the query.
 ]]
-function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.SQLQuery)
+function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.SQLQuery) : {
+    type: string,
+    columns: { string },
+    tableName: string,
+    whereClause: { { column: string, operator: string, value: string } },
+    setClauses: { { column: string, value: string } },
+    values: { string },
+    commandOptions: { string }
+}
     local functionName = "DatastoreSQL.parseSQL"
 
     local success, astOrError = pcall(SQLParser.parse, normalizeSQL(query))

@@ -72,7 +72,7 @@ Use the `connect` function to establish a connection to your DataStore:
 local DataStoreService = game:GetService("DataStoreService")
 local datastore = DataStoreService:GetDataStore("ExampleStore")
 
-rSQL.connect(datastore, config)
+rSQL:connect(datastore, config)
     :andThen(function(connection)
         print("Connected to DataStore!")
         -- Save the connection for future queries
@@ -155,7 +155,7 @@ If you’re managing player profiles, use the `connectToProfileService` method i
 ```lua
 local profilesTable = {}
 
-rSQL.connectToProfileService(profilesTable, config)
+rSQL:connectToProfileService(profilesTable, config)
     :andThen(function(connection)
         print("Connected to ProfileService!")
         -- Save the connection for future queries
