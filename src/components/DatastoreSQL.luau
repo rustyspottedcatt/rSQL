@@ -593,8 +593,6 @@ function DatastoreSQL.stripQuotes(self: Types.DatastoreSQLConnection, value: str
     local stripped = string.gsub(value, [["([^"]*)"]], "%1")
     stripped = string.gsub(stripped, [[%'([^']*)%']], "%1")
     
-    print("Before stripping:", value)
-    print("Stripped:", stripped)
     return stripped
 end
 
