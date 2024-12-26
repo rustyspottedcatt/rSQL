@@ -1,7 +1,6 @@
 local Types = require(script.Parent.Parent.lib.types)
 local SQLParser = require(script.Parent.SQLParser)
 local Promise = require(script.Parent.Parent.Parent.Parent.Packages.promise)
-local ProfileService = game:GetService("ProfileService")
 
 local ProfileSQL = {}
 ProfileSQL.__index = ProfileSQL
