@@ -1,5 +1,6 @@
 ---
-sidbar_position: 2
+
+sidebar_position: 2
 ---
 
 # Functions
@@ -14,7 +15,7 @@ Establishes a connection to the DataStore with the provided configuration.
 
 ### **Syntax**
 ```lua
-rSQL.connect(self: Types.DatastoreSQL, datastore: Types.DataStore, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.DatastoreSQLConnection>
+rSQL.connect(self: Types.DatastoreSQLConnection, datastore: Types.DataStore, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.DatastoreSQLConnection>
 ```
 
 ### **Parameters**
@@ -45,7 +46,7 @@ Establishes a connection to the Profile Service with the provided configuration.
 
 ### **Syntax**
 ```lua
-rSQL.connectToProfileService(self: Types.DatastoreSQL, profilesTable: table, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
+rSQL.connectToProfileService(self: Types.ProfileSQLConnection, profilesTable: table, config: Types.DatastoreSQLConfig): Types.TypedPromise<Types.ProfileSQLConnection>
 ```
 
 ### **Parameters**

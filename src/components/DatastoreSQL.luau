@@ -1,216 +1,137 @@
 local Types = require(script.Parent.Parent.lib.types)
+local SQLParser = require(script.Parent.SQLParser)
 local Promise = require(script.Parent.Parent.Parent.Parent.Packages.promise)
 
 local DatastoreSQL = {}
 DatastoreSQL.__index = DatastoreSQL
 
+--[[
+    Generates a formatted error message with traceback.
+
+    @function generateError
+    @param functionName string - The name of the function where the error occurred.
+    @param message string - The error message.
+    @return string - The formatted error message.
+]]
 local function generateError(functionName, message)
     return string.format("[rSQL][%s] %s\nTraceback:\n%s", functionName, message, debug.traceback())
 end
 
+--[[
+    Normalizes an SQL query string by removing extra whitespace.
+
+    @function normalizeSQL
+    @param query string - The SQL query string to normalize.
+    @return string - The normalized SQL query string.
+]]
+
+local function normalizeSQL(query)
+    query = query:gsub("%s+", " ")
+    query = query:gsub("%s*,%s*", ", ")
+    query = query:gsub("%s*%(%s*", "("):gsub("%s*%)%s*", ")")
+
+    return query:match("^%s*(.-)%s*$")
+end
+
+--[[
+    Extracts the SQL command from the query string.
+
+    @function extractCommand
+    @param query string - The SQL query string.
+    @return string - The extracted SQL command in uppercase.
+]]
 local function extractCommand(query)
     local command = query:match("^(%w+)")
     return command and command:upper() or ""
 end
 
-function DatastoreSQL.query(self: Types.DatastoreSQLConnection, query: Types.SQLQuery): Types.TypedPromise<Types.SQLQueryResult>
+--[[
+    Executes an SQL query and returns a promise with the result.
+
+    @function query
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param query string - The SQL query to execute.
+    @return Types.TypedPromise<Types.SQLQueryResult> - A promise that resolves with the query result or rejects with an error.
+]]
+function DatastoreSQL.query(self: Types.DatastoreSQLConnection, query: Types.SQLQuery)
     return Promise.new(function(resolve, reject)
         local functionName = "DatastoreSQL.query"
 
-        local success, queryCommand, tableName, columns, values, setClauses, conditions = pcall(function()
-            return self:parseSQL(query :: Types.SQLQuery)
+        local parseSuccess, parsedQuery = pcall(function()
+            return self:parseSQL(query)
         end)
-
-        if not success then
-            return reject(generateError(functionName, "Failed to parse SQL query: " .. tostring(queryCommand)))
+        if not parseSuccess then
+            return reject(generateError(functionName, "Failed to parse SQL query: " .. tostring(parsedQuery)))
         end
 
-        if not queryCommand then
-            return reject(generateError(functionName, "Unexpected `nil` value for `queryCommand`, expected SQL command."))
-        end
+        local queryType = parsedQuery.type
+        local querySuccess, queryData
 
-        if queryCommand == "CREATE" and self.config.allowCreate then
-            local success, result = self:createTable(tableName, columns)
-            if success then
-                return resolve(result)
-            else
-                return reject(generateError(functionName, result))
-            end
-        elseif queryCommand == "DROP" and self.config.allowDrop then
-            local success, result = self:dropTable(tableName)
-            if success then
-                return resolve(result)
-            else
-                return reject(generateError(functionName, result))
-            end
-        elseif queryCommand == "TRUNCATE" and self.config.allowTruncate then
-            local success, result = self:truncateTable(tableName)
-            if success then
-                return resolve(result)
-            else
-                return reject(generateError(functionName, result))
-            end
-        elseif queryCommand == "INSERT" and self.config.allowInsert then
-            local success, result = self:insert(tableName, columns, values)
-            if success then
-                return resolve(result)
-            else
-                return reject(generateError(functionName, result))
-            end
-        elseif queryCommand == "SELECT" and self.config.allowSelect then
-            local success, result = self:select(tableName, columns, conditions)
-            if success then
-                return resolve(result)
-            else
-                return reject(generateError(functionName, result))
-            end
-        elseif queryCommand == "UPDATE" and self.config.allowUpdate then
-            local success, result = self:update(tableName, setClauses, conditions)
-            if success then
-                return resolve(result)
-            else
-                return reject(generateError(functionName, result))
-            end
-        elseif queryCommand == "DELETE" and self.config.allowDelete then
-            local success, result = self:delete(tableName, conditions)
-            if success then
-                return resolve(result)
-            else
-                return reject(generateError(functionName, result))
-            end
+        if queryType == "CREATE" and self.config.allowCreate then
+            querySuccess, queryData = self:createTable(parsedQuery.tableName, parsedQuery.columns)
+        elseif queryType == "DROP" and self.config.allowDrop then
+            querySuccess, queryData = self:dropTable(parsedQuery.tableName)
+        elseif queryType == "TRUNCATE" and self.config.allowTruncate then
+            querySuccess, queryData = self:truncateTable(parsedQuery.tableName)
+        elseif queryType == "INSERT" and self.config.allowInsert then
+            querySuccess, queryData = self:insert(parsedQuery.tableName, parsedQuery.columns, parsedQuery.values)
+        elseif queryType == "SELECT" and self.config.allowSelect then
+            querySuccess, queryData = self:select(parsedQuery.tableName, parsedQuery.columns, parsedQuery.whereClause)
+        elseif queryType == "UPDATE" and self.config.allowUpdate then
+            querySuccess, queryData = self:update(parsedQuery.tableName, parsedQuery.setClauses, parsedQuery.whereClause)
+        elseif queryType == "DELETE" and self.config.allowDelete then
+            querySuccess, queryData = self:delete(parsedQuery.tableName, parsedQuery.whereClause)
+            elseif queryType == "ALTER" and self.config.allowAlter then
+                local tableName, alterType, columnDetails = parsedQuery.tableName, parsedQuery.commandOptions[1], { [1] = parsedQuery.commandOptions[2], [2] = parsedQuery.commandOptions[3] }
+                if alterType == "ADD" then
+                    querySuccess, queryData = self:alterTableAddColumn(tableName, columnDetails)
+                elseif alterType == "DROP" then
+                    querySuccess, queryData = self:alterTableDropColumn(tableName, columnDetails)
+                else
+                    return reject(generateError(functionName, "Unsupported ALTER TABLE operation."))
+                end            
         else
-            return reject(generateError(functionName, "Unexpected SQL command, expected INSERT, SELECT, UPDATE, DELETE, CREATE, DROP or TRUNCATE, OR command is not allowed by config (common case)."))
+            return reject(generateError(functionName, "Command not supported or disallowed by configuration."))
+        end
+
+        if querySuccess then
+            return resolve(queryData)
+        else
+            return reject(generateError(functionName, queryData))
         end
     end)
 end
 
+--[[
+    Parses an SQL query into its components using the SQLParser module.
+
+    @function parseSQL
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param query string - The SQL query to parse.
+    @return table - Parsed AST representing the query.
+]]
 function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.SQLQuery)
     local functionName = "DatastoreSQL.parseSQL"
-    local command = extractCommand(query)
 
-    local createPattern = "^CREATE%s+TABLE%s+([%w_]+)%s*%(([%w_,%s]+)%)$"
-    local dropPattern = "^DROP%s+TABLE%s+([%w_]+)%s*$"
-    local truncatePattern = "^TRUNCATE%s+TABLE%s+([%w_]+)%s*$"
-    local insertPattern = "^INSERT%s+INTO%s+([%w_]+)%s*%(([%w_,%s]+)%)%s*VALUES%s*%(([%w%s',]+)%)$"
-    local selectPattern = [[SELECT%s+(.-)%s+FROM%s+(%S+)%s*WHERE%s*(.+)]]
-    local updatePattern = [[UPDATE%s+([%w_]+)%s+SET%s+([^WHERE]+)%s+WHERE%s+(.+)]]
-    local deletePattern = [[DELETE%s+FROM%s+(%S+)%s+WHERE%s+(.+)]]
-
-    local function stripQuotes(s: string): string
-        return s:gsub("^'(.-)'$", "%1")
+    local success, astOrError = pcall(SQLParser.parse, normalizeSQL(query))
+    if not success then
+        error(generateError(functionName, "Failed to parse SQL query: " .. tostring(astOrError)))
     end
 
-    if command == "CREATE" then
-        local createMatch = { string.match(query, createPattern) }
-        if #createMatch == 2 then
-            local tableName, columnsStr = createMatch[1], createMatch[2]
-            local columns = self:split(columnsStr, ",")
-            return "CREATE", tableName, columns, nil, nil
-        else
-            print("CREATE pattern did not match. Expected 2 captures, got:", #createMatch)
-            error(generateError(functionName, "CREATE TABLE query did not match the expected pattern."))
-        end
-    elseif command == "DROP" then
-        local dropMatch = { string.match(query, dropPattern) }
-        if #dropMatch == 1 then
-            local tableName = dropMatch[1]
-            return "DROP", tableName, nil, nil, nil
-        else
-            print("DROP pattern did not match. Expected 1 capture, got:", #dropMatch)
-            error(generateError(functionName, "DROP TABLE query did not match the expected pattern."))
-        end
-    elseif command == "TRUNCATE" then
-        local truncateMatch = { string.match(query, truncatePattern) }
-        if #truncateMatch == 1 then
-            local tableName = truncateMatch[1]
-            return "TRUNCATE", tableName, nil, nil, nil
-        else
-            print("TRUNCATE pattern did not match. Expected 1 capture, got:", #truncateMatch)
-            error(generateError(functionName, "TRUNCATE TABLE query did not match the expected pattern."))
-        end
-    elseif command == "INSERT" then
-        local insertMatch = { string.match(query, insertPattern) }
-        if #insertMatch == 3 then
-            local tableName, columnsStr, valuesStr = insertMatch[1], insertMatch[2], insertMatch[3]
-            local columns = self:split(columnsStr, ",")
-            local values = self:split(valuesStr, ",")
-
-            for i, value in ipairs(values) do
-                values[i] = stripQuotes(value)
-            end
-
-            return "INSERT", tableName, columns, values, nil, nil
-        else
-            print("INSERT pattern did not match. Expected 3 captures, got:", #insertMatch)
-            error(generateError(functionName, "INSERT query did not match the expected pattern."))
-        end
-    elseif command == "SELECT" then
-        local selectMatch = { string.match(query, selectPattern) }
-        if #selectMatch >= 2 then
-            local columnsStr, tableName, conditionsStr = selectMatch[1], selectMatch[2], selectMatch[3]
-            local columns = self:split(columnsStr, ",")
-            local conditions = nil
-            if conditionsStr then
-                conditions = self:parseConditions(conditionsStr)
-                for key, value in pairs(conditions) do
-                    conditions[key] = stripQuotes(value)
-                end
-            end
-            return "SELECT", tableName, columns, nil, nil, conditions
-        else
-            print("SELECT pattern did not match. Expected at least 2 captures, got:", #selectMatch)
-            error(generateError(functionName, "SELECT query did not match the expected pattern."))
-        end
-        elseif command == "UPDATE" then
-            local updateMatch = { string.match(query, updatePattern) }
-        
-            if #updateMatch >= 3 then
-                local tableName, setStr, conditionsStr = updateMatch[1], updateMatch[2], updateMatch[3]
-
-                local setClauses = self:parseSetClause(setStr)
-        
-                for key, value in pairs(setClauses) do
-                    setClauses[key] = stripQuotes(value)
-                end
-        
-                local conditions = nil
-                if conditionsStr then
-                    conditions = self:parseConditions(conditionsStr)
-                    for key, value in pairs(conditions) do
-                        conditions[key] = stripQuotes(value)
-                    end
-                end
-        
-                return "UPDATE", tableName, nil, nil, setClauses, conditions
-            else
-                print("UPDATE pattern did not match. Expected 3 captures, got:", #updateMatch)
-                error(generateError(functionName, "UPDATE query did not match the expected pattern."))
-            end
-    elseif command == "DELETE" then
-        local deleteMatch = { string.match(query, deletePattern) }
-        if #deleteMatch >= 2 then
-            local tableName, conditionsStr = deleteMatch[1], deleteMatch[2]
-
-            local conditions = nil
-            if conditionsStr then
-                conditions = self:parseConditions(conditionsStr)
-                for key, value in pairs(conditions) do
-                    conditions[key] = stripQuotes(value)
-                end
-            end
-
-            return "DELETE", tableName, nil, nil, nil, conditions
-        else
-            print("DELETE pattern did not match. Expected 2 captures, got:", #deleteMatch)
-            error(generateError(functionName, "DELETE query did not match the expected pattern."))
-        end
-    else
-        print("Unsupported SQL command detected:", command)
-        error(generateError(functionName, "Unsupported SQL command: " .. command))
-    end
+    return astOrError
 end
 
-function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName: string, columns: table): Types.TypedPromise<(boolean, string?)>
+
+--[[
+    Creates a new table in the datastore.
+
+    @function createTable
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to create.
+    @param columns table - A table of column names.
+    @return boolean, string? - Success status and a message.
+]]
+function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName: string, columns: table): (boolean, string?)
     local functionName = "DatastoreSQL.createTable"
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
@@ -236,6 +157,14 @@ function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName:
     end
 end
 
+--[[
+    Drops an existing table from the datastore.
+
+    @function dropTable
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to drop.
+    @return boolean, string? - Success status and a message.
+]]
 function DatastoreSQL.dropTable(self: Types.DatastoreSQLConnection, tableName: string): (boolean, string?)
     local functionName = "DatastoreSQL.dropTable"
     if not tableName or #tableName == 0 then
@@ -261,7 +190,15 @@ function DatastoreSQL.dropTable(self: Types.DatastoreSQLConnection, tableName: s
     end
 end
 
-function DatastoreSQL.truncateTable(self: Types.DatastoreSQLConnection, tableName: string): Types.TypedPromise<(boolean, string?)>
+--[[
+    Truncates an existing table by removing all its records.
+
+    @function truncateTable
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to truncate.
+    @return boolean, string? - Success status and a message.
+]]
+function DatastoreSQL.truncateTable(self: Types.DatastoreSQLConnection, tableName: string): (boolean, string?)
     local functionName = "DatastoreSQL.truncateTable"
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
@@ -283,7 +220,17 @@ function DatastoreSQL.truncateTable(self: Types.DatastoreSQLConnection, tableNam
     end
 end
 
-function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: string, columns: table, values: table): Types.TypedPromise<(boolean, string?)>
+--[[
+    Inserts a new record into a table.
+
+    @function insert
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to insert into.
+    @param columns table - A table of column names.
+    @param values table - A table of values corresponding to the columns.
+    @return boolean, string? - Success status and a message.
+]]
+function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: string, columns: table, values: table): (boolean, string?)
     local functionName = "DatastoreSQL.insert"
     if #columns ~= #values then
         return false, generateError(functionName, "Number of columns and values do not match.")
@@ -291,7 +238,13 @@ function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: stri
 
     local record = {}
     for i, column in ipairs(columns) do
-        record[column] = values[i]
+        local value = values[i]
+        
+        if typeof(value) == "string" then
+            value = self:stripQuotes(value)
+        end
+
+        record[column] = value
     end
 
     local primaryKeyColumn = columns[1]
@@ -301,10 +254,11 @@ function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: stri
         self.datastore:UpdateAsync(tableName, function(currentData)
             currentData = currentData or {}
 
-            local foundDuplicate : boolean = false
+            local foundDuplicate = false
             for _, existingRecord in ipairs(currentData) do
                 if existingRecord[primaryKeyColumn] == primaryKeyValue then
                     foundDuplicate = true
+                    break
                 end
             end
 
@@ -323,22 +277,48 @@ function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: stri
     end
 end
 
-function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: string, columns: table, conditions: table?): (Types.SQLQueryResult?, string?)
+
+--[[
+    Selects records from a table based on conditions, order, limit, and distinct.
+
+    @function select
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to select from.
+    @param columns table - A table of column names to retrieve.
+    @param conditions table? - A table of conditions for filtering records.
+    @param orderBy table? - A table of columns to order the results by.
+    @param limit number? - The maximum number of records to return.
+    @param distinct boolean? - Whether to return distinct records.
+    @return Types.SQLQueryResult - SQL query result.
+]]
+function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: string, columns: table, conditions: table?, orderBy: table?, limit: number?, distinct: boolean?): Types.SQLQueryResult
     local functionName = "DatastoreSQL.select"
-    local fetchSuccess: boolean, fetchedData: table = pcall(function()
+    local fetchSuccess, fetchedData: table = pcall(function()
         return self.datastore:GetAsync(tableName)
     end)
 
     if not fetchSuccess or not fetchedData then
-        return {}, generateError(functionName, "Failed to fetch data from DataStore.")
+        return false, generateError(functionName, "Failed to fetch data from DataStore.")
     end
 
     local results: table = {}
+
+    if conditions then
+        for _, condition in ipairs(conditions) do
+            condition.value = self:stripQuotes(condition.value)
+        end
+    end
+
     for _, record in ipairs(fetchedData) do
         local match: boolean = true
+
+        for key, value in pairs(record) do
+            record[key] = self:stripQuotes(value)
+        end
+
         if conditions then
-            for key: string?, value: string? in pairs(conditions :: table) do
-                if tostring(record[key]) ~= value then
+            for _, condition in ipairs(conditions) do
+                if tostring(record[condition.column]) ~= condition.value then
                     match = false
                     break
                 end
@@ -358,13 +338,66 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
         end
     end
 
+    if distinct then
+        local uniqueResults = {}
+        local seen = {}
+        for _, record in ipairs(results) do
+            local key = table.concat({ table.unpack(record) }, "|")
+            if not seen[key] then
+                table.insert(uniqueResults, record)
+                seen[key] = true
+            end
+        end
+        results = uniqueResults
+    end
+
+    if orderBy and #orderBy > 0 then
+        table.sort(results, function(a, b)
+            for _, column in ipairs(orderBy) do
+                local direction = "ASC"
+                local colName = column
+
+                if column:find("%s+") then
+                    colName, direction = column:match("^(%w+)%s+(ASC|DESC)$")
+                    direction = direction or "ASC"
+                end
+
+                if a[colName] ~= b[colName] then
+                    if direction == "ASC" then
+                        return a[colName] < b[colName]
+                    else
+                        return a[colName] > b[colName]
+                    end
+                end
+            end
+            return false
+        end)
+    end
+
+    if limit and limit > 0 then
+        for i = #results, limit + 1, -1 do
+            table.remove(results, i)
+        end
+    end
+
     if #results == 0 then
-        return generateError(functionName, "No matching records found."), results
+        return false, generateError(functionName, "No matching records found.")
     else
         return "[rSQL] Records successfully fetched.", results
     end
 end
 
+
+--[[
+    Updates records in a table based on conditions.
+
+    @function update
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to update.
+    @param setClauses table - A table of key-value pairs to set.
+    @param conditions table? - A table of conditions for filtering records.
+    @return boolean, string? - Success status and a message.
+]]
 function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: string, setClauses: table, conditions: table?): Types.TypedPromise<(boolean, string?)>
     local functionName = "DatastoreSQL.update"
 
@@ -375,20 +408,27 @@ function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: stri
             end
 
             local updated = false
+
             for _, record in ipairs(currentData) do
                 local matches = true
-                if conditions then
-                    for key, value in pairs(conditions) do
-                        if tostring(record[key]) ~= value then
-                            matches = false
-                            break
-                        end
+
+                for _, condition in ipairs(conditions) do
+                    local column = condition.column
+                    local operator = condition.operator
+                    local value = condition.value
+
+                    if tostring(record[column]) ~= tostring(value) then
+                        matches = false
+                        break
                     end
                 end
 
                 if matches then
-                    for key, value in pairs(setClauses) do
-                        record[key] = value
+                    for _, setClause in ipairs(setClauses) do
+                        local setColumn = setClause.column
+                        local setValue = setClause.value
+
+                        record[setColumn] = setValue
                     end
                     updated = true
                 end
@@ -409,11 +449,26 @@ function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: stri
     end
 end
 
-function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: string, conditions: table?): Types.TypedPromise<(boolean, string?)>
+--[[
+    Deletes records from a table based on conditions.
+
+    @function delete
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to delete from.
+    @param conditions table? - A table of conditions for filtering records.
+    @return boolean, string? - Success status and a message.
+]]
+function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: string, conditions: table?): (boolean, string?)
     local functionName = "DatastoreSQL.delete"
 
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
+    end
+
+    if conditions then
+        for _, condition in ipairs(conditions) do
+            condition.value = self:stripQuotes(condition.value) 
+        end
     end
 
     local updateSuccess, updateError = pcall(function()
@@ -427,9 +482,14 @@ function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: stri
 
             for _, record in ipairs(currentData) do
                 local matches = true
+
+                for key, value in pairs(record) do
+                    record[key] = self:stripQuotes(value) 
+                end
+
                 if conditions then
-                    for key, value in pairs(conditions) do
-                        if tostring(record[key]) ~= value then
+                    for _, condition in ipairs(conditions) do
+                        if tostring(record[condition.column]) ~= condition.value then
                             matches = false
                             break
                         end
@@ -456,6 +516,16 @@ function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: stri
     end
 end
 
+
+--[[
+    Splits a string by a given separator.
+
+    @function split
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param inputStr string - The string to split.
+    @param sep string - The separator to split by.
+    @return table - A table of split substrings.
+]]
 function DatastoreSQL.split(self: Types.DatastoreSQLConnection, inputStr: string, sep: string): table
     local result: table = {}
     for str in string.gmatch(inputStr, "([^" .. sep .. "]+)") do
@@ -464,10 +534,26 @@ function DatastoreSQL.split(self: Types.DatastoreSQLConnection, inputStr: string
     return result
 end
 
+--[[
+    Trims leading and trailing whitespace from a string.
+
+    @function trim
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param s string - The string to trim.
+    @return string - The trimmed string.
+]]
 function DatastoreSQL.trim(self: Types.DatastoreSQLConnection, s: string): string
     return (s:gsub("^%s*(.-)%s*$", "%1"))
 end
 
+--[[
+    Parses the WHERE clause into a table of conditions.
+
+    @function parseConditions
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param conditionStr string - The WHERE clause string to parse.
+    @return table - A table containing the parsed conditions.
+]]
 function DatastoreSQL.parseConditions(self: Types.DatastoreSQLConnection, conditionStr: string): table
     local functionName = "DatastoreSQL.parseConditions"
     local conditions = {}
@@ -480,10 +566,26 @@ function DatastoreSQL.parseConditions(self: Types.DatastoreSQLConnection, condit
     return conditions
 end
 
+--[[
+    Removes surrounding quotes from a string.
+
+    @function stripQuotes
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param s string - The string to strip quotes from.
+    @return string - The unquoted string.
+]]
 function DatastoreSQL.stripQuotes(self: Types.DatastoreSQLConnection, s: string): string
     return s:gsub("^'(.-)'$", "%1")
 end
 
+--[[
+    Parses the SET clause of an UPDATE statement into a table of key-value pairs.
+
+    @function parseSetClause
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param setStr string - The SET clause string to parse.
+    @return table - A table containing the parsed SET clauses.
+]]
 function DatastoreSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr: string): table
     local setClauses = {}
     for key, value in string.gmatch(setStr, "(%w+)%s*=%s*([^,]+)") do
@@ -493,6 +595,90 @@ function DatastoreSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr:
         error("Failed to parse SET clause: No valid key-value pairs found.")
     end
     return setClauses
+end
+
+--[[
+    Adds a new column to an existing table.
+
+    @function alterTableAddColumn
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to alter.
+    @param columnDetails table - A table containing the column name and type.
+    @return boolean, string? - Success status and a message.
+]]
+function DatastoreSQL.alterTableAddColumn(self: Types.DatastoreSQLConnection, tableName: string, columnDetails: table): (boolean, string?)
+    local functionName = "DatastoreSQL.alterTableAddColumn"
+    local columnName, columnType = columnDetails[1], columnDetails[2]
+
+    if not tableName or #tableName == 0 then
+        return false, generateError(functionName, "Table name cannot be empty.")
+    end
+
+    if not columnName or #columnName == 0 then
+        return false, generateError(functionName, "Column name cannot be empty.")
+    end
+
+    local updateSuccess, updateError = pcall(function()
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            if not currentData then
+                error("Table '" .. tableName .. "' does not exist.")
+            end
+
+            for _, record in ipairs(currentData) do
+                record[columnName] = nil
+            end
+
+            return currentData
+        end)
+    end)
+
+    if updateSuccess then
+        return true, string.format("[rSQL] Column '%s' added to table '%s' successfully.", columnName, tableName)
+    else
+        return false, generateError(functionName, "Failed to add column: " .. tostring(updateError))
+    end
+end
+
+--[[
+    Drops an existing column from a table.
+
+    @function alterTableDropColumn
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to alter.
+    @param columnDetails table - The table of the column to drop.
+    @return boolean, string? - Success status and a message.
+]]
+function DatastoreSQL.alterTableDropColumn(self: Types.DatastoreSQLConnection, tableName: string, columnDetails : table): (boolean, string?)
+    local functionName = "DatastoreSQL.alterTableDropColumn"
+    local columnName = columnDetails[1]
+
+    if not tableName or #tableName == 0 then
+        return false, generateError(functionName, "Table name cannot be empty.")
+    end
+
+    if not columnName or #columnName == 0 then
+        return false, generateError(functionName, "Column name cannot be empty.")
+    end
+
+    local updateSuccess, updateError = pcall(function()
+        self.datastore:UpdateAsync(tableName, function(currentData)
+            if not currentData then
+                error("Table '" .. tableName .. "' does not exist.")
+            end
+
+            for _, record in ipairs(currentData) do
+                record[columnName] = nil
+            end
+
+            return currentData
+        end)
+    end)
+
+    if updateSuccess then
+        return true, string.format("[rSQL] Column '%s' dropped from table '%s' successfully.", columnName, tableName)
+    else
+        return false, generateError(functionName, "Failed to drop column: " .. tostring(updateError))
+    end
 end
 
 return DatastoreSQL

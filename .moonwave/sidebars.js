@@ -1,5 +1,5 @@
 module.exports = {
-    mySidebar: [
+    rSQL: [
       {
         type: "doc",
         id: "intro",
