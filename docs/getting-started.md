@@ -1,5 +1,5 @@
 ---
-sidebar_position: 1
+sidebar_position: 2
 ---
 
 # Getting Started with rSQL
@@ -58,8 +58,8 @@ To use `rSQL`, you need to define and manage tables. Tables in `rSQL` simulate d
 ### Example: Creating a Table
 
 ```lua
-local connection = rSQL:connect(testDatastore, config)
-connection:query("CREATE TABLE Players (Id INTEGER PRIMARY KEY, Name TEXT, Score INTEGER)")
+local connection = rSQL:connect(testDatastore, config):expect() -- yields
+connection:query("CREATE TABLE Players (Id, Name, Score)")
 ```
 
 ### Explanation:
@@ -73,22 +73,22 @@ connection:query("CREATE TABLE Players (Id INTEGER PRIMARY KEY, Name TEXT, Score
 
 ### Inserting Data
 ```lua
-connection:query("INSERT INTO Players (Id, Name, Score) VALUES (1, 'Carlos', 5000)")
+local result = connection:query("INSERT INTO Players (Id, Name, Score) VALUES (1, 'Carlos', 5000)"):expect()
 ```
 
 ### Selecting Data
 ```lua
-connection:query("SELECT Name, Score FROM Players WHERE Score > 1000")
+local result = connection:query("SELECT Name, Score FROM Players WHERE Score > 1000"):expect()
 ```
 
 ### Updating Data
 ```lua
-connection:query("UPDATE Players SET Score = 6000 WHERE Id = 1")
+local result = connection:query("UPDATE Players SET Score = 6000 WHERE Id = 1"):expect()
 ```
 
 ### Deleting Data
 ```lua
-connection:query("DELETE FROM Players WHERE Id = 1")
+local result = connection:query("DELETE FROM Players WHERE Id = 1"):expect()
 ```
 
 ---
@@ -97,8 +97,7 @@ connection:query("DELETE FROM Players WHERE Id = 1")
 
 Once you’re comfortable with the basics, explore the following:
 
-- [Introduction](./introduction.md)
-- [Basic Usage](./basic-usage.md)
-- [Advanced Usage](./advanced-usage.md)
+- [Basic Usage](/basic-usage.md)
+- [Advanced Usage](/advanced-usage.md)
 
 

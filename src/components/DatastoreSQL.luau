@@ -151,10 +151,7 @@ function DatastoreSQL.createTable(self: Types.DatastoreSQLConnection, tableName:
 
     local updateSuccess, updateError = pcall(function()
         self.datastore:UpdateAsync(tableName, function(currentData)
-            if currentData then
-                return currentData
-            end
-            return {}
+            return { _schema = columns, rows = {}}
         end)
     end)
 
@@ -260,20 +257,25 @@ function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: stri
 
     local updateSuccess, updateError = pcall(function()
         self.datastore:UpdateAsync(tableName, function(currentData)
-            currentData = currentData or {}
+            currentData = currentData or { _schema = {}, rows = {} }
 
-            local foundDuplicate = false
-            for _, existingRecord in ipairs(currentData) do
-                if existingRecord[primaryKeyColumn] == primaryKeyValue then
-                    foundDuplicate = true
-                    break
+            if not currentData._schema or not currentData.rows then
+                error("Table '" .. tableName .. "' is not properly initialized.")
+            end
+
+            for _, column in ipairs(columns) do
+                if not table.find(currentData._schema, column) then
+                    error("Column '" .. column .. "' is not defined in the table schema.")
                 end
             end
 
-            if not foundDuplicate then
-                table.insert(currentData, record)
+            for _, existingRecord in ipairs(currentData.rows) do
+                if existingRecord[primaryKeyColumn] == primaryKeyValue then
+                    error("Duplicate primary key value '" .. tostring(primaryKeyValue) .. "' for column '" .. primaryKeyColumn .. "'.")
+                end
             end
 
+            table.insert(currentData.rows, record)
             return currentData
         end)
     end)
@@ -301,7 +303,7 @@ end
 ]]
 function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: string, columns: {any}, conditions: {any}?, orderBy: {any}?, limit: number?, distinct: boolean?): (boolean, any?)
     local functionName = "DatastoreSQL.select"
-    local fetchSuccess, fetchedData: {any} = pcall(function()
+    local fetchSuccess, fetchedData: { _schema : {any}, rows : {any}} = pcall(function()
         return self.datastore:GetAsync(tableName)
     end)
 
@@ -322,22 +324,12 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
         end
     end
 
-    warn(fetchedData)
-    warn(tableName)
-    warn(columns)
-    warn(conditions)
-    warn(orderBy)
-    warn(limit)
-    warn(distinct)
-
-    for _, record in ipairs(fetchedData) do
+    for _, record in ipairs(fetchedData.rows) do
         local match: boolean = true
 
         for key, value in pairs(record) do
             record[key] = self:stripQuotes(value)
         end
-
-        warn("Record", record)
 
         if conditions then
             for _, condition in ipairs(conditions) do
@@ -467,14 +459,13 @@ function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: stri
     local functionName = "DatastoreSQL.update"
 
     local updateSuccess, updateError = pcall(function()
-        self.datastore:UpdateAsync(tableName, function(currentData)
+        self.datastore:UpdateAsync(tableName, function(currentData : { _schema : {any}, rows : {any}})
             if not currentData then
                 error("Table '" .. tableName .. "' does not exist.")
             end
 
             local updated = false
-
-            for _, record in ipairs(currentData) do
+            for _, record in ipairs(currentData.rows) do
                 local matches = true
 
                 for key, value in pairs(record) do
@@ -529,7 +520,6 @@ function DatastoreSQL.update(self: Types.DatastoreSQLConnection, tableName: stri
                         break
                     end
                 end
-                
 
                 if matches then
                     for _, setClause in ipairs(setClauses) do
@@ -580,15 +570,15 @@ function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: stri
     end
 
     local updateSuccess, updateError = pcall(function()
-        self.datastore:UpdateAsync(tableName, function(currentData)
+        self.datastore:UpdateAsync(tableName, function(currentData: { _schema : {any}, rows : {any}})
             if not currentData then
                 error("Table '" .. tableName .. "' does not exist.")
             end
 
-            local originalCount = #currentData
+            local originalCount = #currentData.rows
             local filteredData = {}
 
-            for _, record in ipairs(currentData) do
+            for _, record in ipairs(currentData.rows) do
                 local matches = true
 
                 for key, value in pairs(record) do
@@ -770,12 +760,12 @@ function DatastoreSQL.alterTableAddColumn(self: Types.DatastoreSQLConnection, ta
     end
 
     local updateSuccess, updateError = pcall(function()
-        self.datastore:UpdateAsync(tableName, function(currentData)
+        self.datastore:UpdateAsync(tableName, function(currentData: { _schema : {any}, rows : {any}})
             if not currentData then
                 error("Table '" .. tableName .. "' does not exist.")
             end
 
-            for _, record in ipairs(currentData) do
+            for _, record in ipairs(currentData.rows) do
                 record[columnName] = nil
             end
 
@@ -812,12 +802,12 @@ function DatastoreSQL.alterTableDropColumn(self: Types.DatastoreSQLConnection, t
     end
 
     local updateSuccess, updateError = pcall(function()
-        self.datastore:UpdateAsync(tableName, function(currentData)
+        self.datastore:UpdateAsync(tableName, function(currentData: { _schema : {any}, rows : {any}})
             if not currentData then
                 error("Table '" .. tableName .. "' does not exist.")
             end
 
-            for _, record in ipairs(currentData) do
+            for _, record in ipairs(currentData.rows) do
                 record[columnName] = nil
             end
 
