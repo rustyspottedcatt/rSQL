@@ -1,3 +1,5 @@
+-- ProfileSQL.luau
+
 local Types = require(script.Parent.Parent.lib.types)
 local SQLParser = require(script.Parent.SQLParser)
 local Promise = require(script.Parent.Parent.Parent.Parent.Packages.promise)
@@ -70,7 +72,7 @@ function ProfileSQL.query(self: Types.ProfileSQLConnection, query: Types.SQLQuer
         elseif queryType == "INSERT" and self.config.allowInsert then
             querySuccess, queryData = self:insert(parsedQuery.tableName, parsedQuery.columns, parsedQuery.values)
         elseif queryType == "SELECT" and self.config.allowSelect then
-            querySuccess, queryData = self:select(parsedQuery.tableName, parsedQuery.columns, parsedQuery.whereClause)
+            querySuccess, queryData = self:select(parsedQuery.tableName, parsedQuery.columns, parsedQuery.whereClause, parsedQuery.orderBy, parsedQuery.limit, parsedQuery.distinct)
         elseif queryType == "UPDATE" and self.config.allowUpdate then
             querySuccess, queryData = self:update(parsedQuery.tableName, parsedQuery.setClauses, parsedQuery.whereClause)
         elseif queryType == "DELETE" and self.config.allowDelete then
@@ -114,90 +116,6 @@ function ProfileSQL.parseSQL(self: Types.ProfileSQLConnection, query: Types.SQLQ
     return astOrError
 end
 
---[[
-    Drops an existing column from a table.
-
-    @function alterTableDropColumn
-    @param self Types.ProfileSQLConnection - The SQL connection instance.
-    @param tableName string - The name of the table to alter.
-    @param columnDetails table - The table of the column to drop.
-    @return boolean, string? - Success status and a message.
-]]
-function ProfileSQL.alterTableDropColumn(self: Types.ProfileSQLConnection, tableName: string, columnDetails : {any}): (boolean, string?)
-    local functionName = "DatastoreSQL.alterTableDropColumn"
-    local columnName = columnDetails[1]
-
-    if not tableName or #tableName == 0 then
-        return false, generateError(functionName, "Table name cannot be empty.")
-    end
-
-    if not columnName or #columnName == 0 then
-        return false, generateError(functionName, "Column name cannot be empty.")
-    end
-
-    local updateSuccess, updateError = pcall(function()
-        self.profilesTable.Data[tableName] = function(currentData)
-            if not currentData then
-                error("Table '" .. tableName .. "' does not exist.")
-            end
-
-            for _, record in ipairs(currentData) do
-                record[columnName] = nil
-            end
-
-            return currentData
-        end
-    end)
-
-    if updateSuccess then
-        return true, string.format("[rSQL] Column '%s' dropped from table '%s' successfully.", columnName, tableName)
-    else
-        return false, generateError(functionName, "Failed to drop column: " .. tostring(updateError))
-    end
-end
-
---[[
-    Adds a new column to an existing table.
-
-    @function alterTableAddColumn
-    @param self Types.ProfileSQLConnection - The SQL connection instance.
-    @param tableName string - The name of the table to alter.
-    @param columnDetails table - A table containing the column name and type.
-    @return boolean, string? - Success status and a message.
-]]
-function ProfileSQL.alterTableAddColumn(self: Types.ProfileSQLConnection, tableName: string, columnDetails: {any}): (boolean, string?)
-    local functionName = "DatastoreSQL.alterTableAddColumn"
-    local columnName, _columnType = columnDetails[1], columnDetails[2]
-
-    if not tableName or #tableName == 0 then
-        return false, generateError(functionName, "Table name cannot be empty.")
-    end
-
-    if not columnName or #columnName == 0 then
-        return false, generateError(functionName, "Column name cannot be empty.")
-    end
-
-    local updateSuccess, updateError = pcall(function()
-        self.profilesTable.Data[tableName] = function(currentData)
-            if not currentData then
-                error("Table '" .. tableName .. "' does not exist.")
-            end
-
-            for _, record in ipairs(currentData) do
-                record[columnName] = nil
-            end
-
-            return currentData
-        end
-    end)
-
-    if updateSuccess then
-        return true, string.format("[rSQL] Column '%s' added to table '%s' successfully.", columnName, tableName)
-    else
-        return false, generateError(functionName, "Failed to add column: " .. tostring(updateError))
-    end
-end
-
 --[[ 
     Creates a new table in the profiles table.
     @function createTable
@@ -216,8 +134,15 @@ function ProfileSQL.createTable(self: Types.ProfileSQLConnection, tableName: str
         return false, generateError(functionName, "Columns must be specified for CREATE TABLE.")
     end
 
+    if self.profilesTable.Data[tableName] then
+        return false, generateError(functionName, "Table '" .. tableName .. "' already exists.")
+    end
+
     local updateSuccess, updateError = pcall(function()
-        self.profilesTable.Data[tableName] = {}
+        self.profilesTable.Data[tableName] = {
+            _schema = columns,
+            rows = {}
+        }
     end)
 
     if updateSuccess then
@@ -244,14 +169,14 @@ function ProfileSQL.dropTable(self: Types.ProfileSQLConnection, tableName: strin
         return false, generateError(functionName, "Table '" .. tableName .. "' does not exist.")
     end
 
-    local removeSuccess, removeError = pcall(function()
+    local updateSuccess, updateError = pcall(function()
         self.profilesTable.Data[tableName] = nil 
     end)
 
-    if removeSuccess then
+    if updateSuccess then
         return true, "[rSQL] Table '" .. tableName .. "' dropped successfully."
     else
-        return false, generateError(functionName, "Failed to drop table: " .. tostring(removeError))
+        return false, generateError(functionName, "Failed to drop table: " .. tostring(updateError))
     end
 end
 
@@ -268,8 +193,12 @@ function ProfileSQL.truncateTable(self: Types.ProfileSQLConnection, tableName: s
         return false, generateError(functionName, "Table name cannot be empty.")
     end
 
+    if not self.profilesTable.Data[tableName] then
+        return false, generateError(functionName, "Table '" .. tableName .. "' does not exist.")
+    end
+
     local updateSuccess, updateError = pcall(function()
-        self.profilesTable.Data[tableName] = {}
+        self.profilesTable.Data[tableName].rows = {}
     end)
 
     if updateSuccess then
@@ -311,21 +240,17 @@ function ProfileSQL.insert(self: Types.ProfileSQLConnection, tableName: string, 
     local updateSuccess, updateError = pcall(function()
         local tableData = self.profilesTable.Data[tableName]
         if not tableData then
-            tableData = {}
-            self.profilesTable.Data[tableName] = tableData
+            error("Table '" .. tableName .. "' does not exist.")
         end
 
-        local foundDuplicate = false
-        for _, existingRecord in ipairs(tableData) do
+        -- Check for duplicate primary key
+        for _, existingRecord in ipairs(tableData.rows) do
             if existingRecord[primaryKeyColumn] == primaryKeyValue then
-                foundDuplicate = true
-                break
+                error("Duplicate primary key value '" .. tostring(primaryKeyValue) .. "' for column '" .. primaryKeyColumn .. "'.")
             end
         end
 
-        if not foundDuplicate then
-            table.insert(tableData, record)
-        end
+        table.insert(tableData.rows, record)
     end)
 
     if updateSuccess then
@@ -345,36 +270,68 @@ end
     @param orderBy table? - A table of columns to order the results by.
     @param limit number? - The maximum number of records to return.
     @param distinct boolean? - Whether to return distinct records.
-    @return (string, any) - SQL query result.
+    @return (boolean, any) - SQL query result.
 ]]
 function ProfileSQL.select(self: Types.ProfileSQLConnection, tableName: string, columns: {any}, conditions: {any}?, orderBy: {any}?, limit: number?, distinct: boolean?): (boolean, any?)
     local functionName = "ProfileSQL.select"
-    local fetchSuccess, fetchedData = pcall(function()
-        return self.profilesTable.Data[tableName]
-    end)
+    local tableData = self.profilesTable.Data[tableName]
 
-    if not fetchSuccess or not fetchedData then
-        return false, generateError(functionName, "Failed to fetch data from profilesTable.")
+    if not tableData then
+        return false, generateError(functionName, "Table '" .. tableName .. "' does not exist.")
     end
 
     local results = {}
 
-    if conditions then
-        for _, condition in ipairs(conditions) do
-            condition.value = self:stripQuotes(condition.value)
-        end
-    end
-
-    for _, record in ipairs(fetchedData) do
+    -- Apply Conditions
+    for _, record in ipairs(tableData.rows) do
         local match = true
-
-        for key, value in pairs(record) do
-            record[key] = self:stripQuotes(value)
-        end
 
         if conditions then
             for _, condition in ipairs(conditions) do
-                if tostring(record[condition.column]) ~= condition.value then
+                local recordValue = tostring(record[condition.column] or "")
+                local conditionValue = tostring(condition.value or "")
+
+                -- Handle numeric comparisons if applicable
+                local numRecord = tonumber(recordValue)
+                local numCondition = tonumber(conditionValue)
+
+                if numRecord and numCondition then
+                    recordValue = numRecord
+                    conditionValue = numCondition
+                end
+
+                if condition.operator == "=" or condition.operator == "==" then
+                    if recordValue ~= conditionValue then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == "!=" then
+                    if recordValue == conditionValue then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == ">" then
+                    if not (recordValue > conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == "<" then
+                    if not (recordValue < conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == ">=" then
+                    if not (recordValue >= conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == "<=" then
+                    if not (recordValue <= conditionValue) then
+                        match = false
+                        break
+                    end
+                else
+                    warn("[rSQL] Unsupported operator in condition:", condition.operator)
                     match = false
                     break
                 end
@@ -394,6 +351,7 @@ function ProfileSQL.select(self: Types.ProfileSQLConnection, tableName: string, 
         end
     end
 
+    -- Apply Distinct
     if distinct then
         local uniqueResults = {}
         local seen = {}
@@ -407,7 +365,7 @@ function ProfileSQL.select(self: Types.ProfileSQLConnection, tableName: string, 
         results = uniqueResults
     end
 
-    -- Ordering
+    -- Apply Ordering
     if orderBy and #orderBy > 0 then
         table.sort(results, function(a, b)
             for _, column in ipairs(orderBy) do
@@ -430,9 +388,10 @@ function ProfileSQL.select(self: Types.ProfileSQLConnection, tableName: string, 
         end)
     end
 
+    -- Apply Limit
     if limit and limit > 0 then
-        for i = #results, limit + 1, -1 do
-            table.remove(results, i)
+        while #results > limit do
+            table.remove(results)
         end
     end
 
@@ -455,51 +414,92 @@ end
 function ProfileSQL.update(self: Types.ProfileSQLConnection, tableName: string, setClauses: {any}, conditions: {any}?): (boolean, string?)
     local functionName = "ProfileSQL.update"
 
-    local updateSuccess, updateError = pcall(function()
-        self.profilesTable.Data[tableName] = function(currentData)
-            if not currentData then
-                error("Table '" .. tableName .. "' does not exist.")
-            end
+    if not self.profilesTable.Data[tableName] then
+        return false, generateError(functionName, "Table '" .. tableName .. "' does not exist.")
+    end
 
-            local updated = false
+    local updated = false
 
-            for _, record in ipairs(currentData) do
-                local matches = true
+    for _, record in ipairs(self.profilesTable.Data[tableName].rows) do
+        local match = true
 
-                for _, condition in ipairs(conditions or {}) do
-                    local column = condition.column
-                    local _operator = condition.operator
-                    local value = condition.value
+        if conditions then
+            for _, condition in ipairs(conditions) do
+                local recordValue = tostring(record[condition.column] or "")
+                local conditionValue = tostring(condition.value or "")
 
-                    if tostring(record[column]) ~= tostring(value) then
-                        matches = false
+                -- Handle numeric comparisons if applicable
+                local numRecord = tonumber(recordValue)
+                local numCondition = tonumber(conditionValue)
+
+                if numRecord and numCondition then
+                    recordValue = numRecord
+                    conditionValue = numCondition
+                end
+
+                if condition.operator == "=" or condition.operator == "==" then
+                    if recordValue ~= conditionValue then
+                        match = false
                         break
                     end
-                end
-
-                if matches then
-                    for _, setClause in ipairs(setClauses) do
-                        local setColumn = setClause.column
-                        local setValue = setClause.value
-
-                        record[setColumn] = setValue
+                elseif condition.operator == "!=" then
+                    if recordValue == conditionValue then
+                        match = false
+                        break
                     end
-                    updated = true
+                elseif condition.operator == ">" then
+                    if not (recordValue > conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == "<" then
+                    if not (recordValue < conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == ">=" then
+                    if not (recordValue >= conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == "<=" then
+                    if not (recordValue <= conditionValue) then
+                        match = false
+                        break
+                    end
+                else
+                    warn("[rSQL] Unsupported operator in condition:", condition.operator)
+                    match = false
+                    break
                 end
             end
-
-            if not updated then
-                error("No matching records found to update.")
-            end
-
-            return currentData
         end
-    end)
 
-    if updateSuccess then
+        if match then
+            for _, setClause in ipairs(setClauses) do
+                local column = setClause.column
+                local value = setClause.value
+
+                if self.profilesTable.Data[tableName]._schema then
+                    if not table.find(self.profilesTable.Data[tableName]._schema, column) then
+                        return false, generateError(functionName, "Column '" .. column .. "' does not exist in table '" .. tableName .. "'.")
+                    end
+                end
+
+                if typeof(value) == "string" then
+                    value = self:stripQuotes(value)
+                end
+
+                record[column] = value
+            end
+            updated = true
+        end
+    end
+
+    if updated then
         return true, "[rSQL] Records updated successfully."
     else
-        return false, generateError(functionName, "Failed to update records: " .. tostring(updateError))
+        return false, generateError(functionName, "No matching records found to update.")
     end
 end
 
@@ -514,70 +514,189 @@ end
 function ProfileSQL.delete(self: Types.ProfileSQLConnection, tableName: string, conditions: {any}?): (boolean, string?)
     local functionName = "ProfileSQL.delete"
 
+    if not self.profilesTable.Data[tableName] then
+        return false, generateError(functionName, "Table '" .. tableName .. "' does not exist.")
+    end
+
+    local originalCount = #self.profilesTable.Data[tableName].rows
+    local filteredRows = {}
+
+    for _, record in ipairs(self.profilesTable.Data[tableName].rows) do
+        local match = true
+
+        if conditions then
+            for _, condition in ipairs(conditions) do
+                local recordValue = tostring(record[condition.column] or "")
+                local conditionValue = tostring(condition.value or "")
+
+                -- Handle numeric comparisons if applicable
+                local numRecord = tonumber(recordValue)
+                local numCondition = tonumber(conditionValue)
+
+                if numRecord and numCondition then
+                    recordValue = numRecord
+                    conditionValue = numCondition
+                end
+
+                if condition.operator == "=" or condition.operator == "==" then
+                    if recordValue ~= conditionValue then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == "!=" then
+                    if recordValue == conditionValue then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == ">" then
+                    if not (recordValue > conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == "<" then
+                    if not (recordValue < conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == ">=" then
+                    if not (recordValue >= conditionValue) then
+                        match = false
+                        break
+                    end
+                elseif condition.operator == "<=" then
+                    if not (recordValue <= conditionValue) then
+                        match = false
+                        break
+                    end
+                else
+                    warn("[rSQL] Unsupported operator in condition:", condition.operator)
+                    match = false
+                    break
+                end
+            end
+        end
+
+        if not match then
+            table.insert(filteredRows, record)
+        end
+    end
+
+    if conditions and #filteredRows == originalCount then
+        return false, generateError(functionName, "No matching records found to delete.")
+    end
+
+    self.profilesTable.Data[tableName].rows = filteredRows
+
+    return true, "[rSQL] Records deleted successfully."
+end
+
+--[[ 
+    Adds a new column to an existing table.
+    @function alterTableAddColumn
+    @param self Types.ProfileSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to alter.
+    @param columnDetails table - A table containing the column name and type.
+    @return boolean, string? - Success status and a message.
+]]
+function ProfileSQL.alterTableAddColumn(self: Types.ProfileSQLConnection, tableName: string, columnDetails: {any}): (boolean, string?)
+    local functionName = "ProfileSQL.alterTableAddColumn"
+    local columnName, _columnType = columnDetails[1], columnDetails[2]
+
     if not tableName or #tableName == 0 then
         return false, generateError(functionName, "Table name cannot be empty.")
     end
 
-    if conditions then
-        for _, condition in ipairs(conditions) do
-            condition.value = self:stripQuotes(condition.value)
-        end
+    if not columnName or #columnName == 0 then
+        return false, generateError(functionName, "Column name cannot be empty.")
+    end
+
+    local tableData = self.profilesTable.Data[tableName]
+    if not tableData then
+        return false, generateError(functionName, "Table '" .. tableName .. "' does not exist.")
+    end
+
+    if table.find(tableData._schema, columnName) then
+        return false, generateError(functionName, "Column '" .. columnName .. "' already exists in table '" .. tableName .. "'.")
     end
 
     local updateSuccess, updateError = pcall(function()
-        self.profilesTable.Data[tableName] = function(currentData)
-            if not currentData then
-                error("Table '" .. tableName .. "' does not exist.")
-            end
-
-            local originalCount = #currentData
-            local filteredData = {}
-
-            for _, record in ipairs(currentData) do
-                local matches = true
-
-                for key, value in pairs(record) do
-                    record[key] = self:stripQuotes(value)
-                end
-
-                if conditions then
-                    for _, condition in ipairs(conditions) do
-                        if tostring(record[condition.column]) ~= condition.value then
-                            matches = false
-                            break
-                        end
-                    end
-                end
-
-                if not matches then
-                    table.insert(filteredData, record)
-                end
-            end
-
-            if #filteredData == originalCount then
-                error("No matching records found to delete.")
-            end
-
-            return filteredData
+        table.insert(tableData._schema, columnName)
+        for _, record in ipairs(tableData.rows) do
+            record[columnName] = nil
         end
     end)
 
     if updateSuccess then
-        return true, "[rSQL] Records deleted successfully."
+        return true, string.format("[rSQL] Column '%s' added to table '%s' successfully.", columnName, tableName)
     else
-        return false, generateError(functionName, "Failed to delete records: " .. tostring(updateError))
+        return false, generateError(functionName, "Failed to add column: " .. tostring(updateError))
     end
 end
 
 --[[ 
-    Removes surrounding quotes from a string.
-    @function stripQuotes
+    Drops an existing column from a table.
+    @function alterTableDropColumn
     @param self Types.ProfileSQLConnection - The SQL connection instance.
+    @param tableName string - The name of the table to alter.
+    @param columnDetails table - The table of the column to drop.
+    @return boolean, string? - Success status and a message.
+]]
+function ProfileSQL.alterTableDropColumn(self: Types.ProfileSQLConnection, tableName: string, columnDetails : {any}): (boolean, string?)
+    local functionName = "ProfileSQL.alterTableDropColumn"
+    local columnName = columnDetails[1]
+
+    if not tableName or #tableName == 0 then
+        return false, generateError(functionName, "Table name cannot be empty.")
+    end
+
+    if not columnName or #columnName == 0 then
+        return false, generateError(functionName, "Column name cannot be empty.")
+    end
+
+    local tableData = self.profilesTable.Data[tableName]
+    if not tableData then
+        return false, generateError(functionName, "Table '" .. tableName .. "' does not exist.")
+    end
+
+    if not table.find(tableData._schema, columnName) then
+        return false, generateError(functionName, "Column '" .. columnName .. "' does not exist in table '" .. tableName .. "'.")
+    end
+
+    local updateSuccess, updateError = pcall(function()
+        -- Remove from schema
+        for i, col in ipairs(tableData._schema) do
+            if col == columnName then
+                table.remove(tableData._schema, i)
+                break
+            end
+        end
+
+        -- Remove from all records
+        for _, record in ipairs(tableData.rows) do
+            record[columnName] = nil
+        end
+    end)
+
+    if updateSuccess then
+        return true, string.format("[rSQL] Column '%s' dropped from table '%s' successfully.", columnName, tableName)
+    else
+        return false, generateError(functionName, "Failed to drop column: " .. tostring(updateError))
+    end
+end
+
+--[[
+    Removes surrounding quotes from a string.
+
+    @function stripQuotes
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
     @param s string - The string to strip quotes from.
     @return string - The unquoted string.
 ]]
-function ProfileSQL.stripQuotes(self: Types.ProfileSQLConnection, s: string): string
-    return s:gsub("^'(.-)'$", "%1")
+function ProfileSQL.stripQuotes(self: Types.DatastoreSQLConnection, value: string): string
+    local stripped = string.gsub(value, [["([^"]*)"]], "%1")
+    stripped = string.gsub(stripped, [[%'([^']*)%']], "%1")
+    
+    return stripped
 end
 
 --[[ 
@@ -617,10 +736,13 @@ end
 function ProfileSQL.parseConditions(self: Types.ProfileSQLConnection, conditionStr: string): {any}
     local functionName = "ProfileSQL.parseConditions"
     local conditions = {}
-    for key, value in string.gmatch(conditionStr, "(%w+)%s*=%s*'?(%w+)'?") do
-        conditions[key] = value
+    for column, operator, value in string.gmatch(conditionStr, "(%w+)%s*([=!<>]+)%s*'([^']*)'") do
+        table.insert(conditions, { column = column, operator = operator, value = value })
     end
-    if next(conditions) == nil then
+    for column, operator, value in string.gmatch(conditionStr, '(%w+)%s*([=!<>]+)%s*"([^"]*)"') do
+        table.insert(conditions, { column = column, operator = operator, value = value })
+    end
+    if #conditions == 0 then
         error(generateError(functionName, "Failed to parse conditions: No valid key-value pairs found."))
     end
     return conditions

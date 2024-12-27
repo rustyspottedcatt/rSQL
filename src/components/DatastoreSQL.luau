@@ -119,7 +119,7 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
 }
     local functionName = "DatastoreSQL.parseSQL"
 
-    local success, astOrError = pcall(SQLParser.parse, normalizeSQL(self:stripQuotes(query)))
+    local success, astOrError = pcall(SQLParser.parse, normalizeSQL(query))
     if not success then
         error(generateError(functionName, "Failed to parse SQL query: " .. tostring(astOrError)))
     end
@@ -703,18 +703,6 @@ function DatastoreSQL.parseConditions(self: Types.DatastoreSQLConnection, condit
 end
 
 --[[
-    Removes surrounding quotes from a string.
-
-    @function stripQuotes
-    @param self Types.DatastoreSQLConnection - The SQL connection instance.
-    @param value string - The string to strip quotes from.
-    @return string - The unquoted string.
-]]
-function DatastoreSQL.stripQuotes(self: Types.DatastoreSQLConnection, value: string): string
-    return value
-end
-
---[[
     Parses the SET clause of an UPDATE statement into a table of key-value pairs.
 
     @function parseSetClause
@@ -778,6 +766,21 @@ function DatastoreSQL.alterTableAddColumn(self: Types.DatastoreSQLConnection, ta
     else
         return false, generateError(functionName, "Failed to add column: " .. tostring(updateError))
     end
+end
+
+--[[
+    Removes surrounding quotes from a string.
+
+    @function stripQuotes
+    @param self Types.DatastoreSQLConnection - The SQL connection instance.
+    @param s string - The string to strip quotes from.
+    @return string - The unquoted string.
+]]
+function DatastoreSQL.stripQuotes(self: Types.DatastoreSQLConnection, value: string): string
+    local stripped = string.gsub(value, [["([^"]*)"]], "%1")
+    stripped = string.gsub(stripped, [[%'([^']*)%']], "%1")
+    
+    return stripped
 end
 
 --[[
