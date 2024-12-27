@@ -45,14 +45,22 @@ function YACC:parse(tokens)
             end
         end
         expect("FROM")
-        local tableName = consume().value
+        local tableNameToken = consume()
+        if not tableNameToken then
+            error("Expected table name but found nil.")
+        end
+        local tableName = tableNameToken.value
         local whereClause = {}
         if peek() and peek().value == "WHERE" then
             consume()
             while true do
                 local column = consume().value
                 local operator = consume().value
-                local value = consume().value
+                local valueToken = consume()
+                if not valueToken then
+                    error("Expected value but found nil.")
+                end
+                local value = valueToken.value
                 table.insert(whereClause, { column = column, operator = operator, value = value })
                 if peek() and (peek().value == "AND" or peek().value == "OR") then
                     consume()
@@ -100,6 +108,9 @@ function YACC:parse(tokens)
             consume()
             while true do
                 local tok = consume()
+                if not tok then
+                    error("Expected value but found nil.")
+                end
                 if tok.value ~= "," and tok.value ~= ")" then
                     table.insert(values, tok.value)
                 elseif tok.value == ")" then
@@ -132,7 +143,11 @@ function YACC:parse(tokens)
         while true do
             local column = consume().value
             expect("=")
-            local value = consume().value
+            local valueToken = consume()
+            if not valueToken then
+                error("Expected value but found nil.")
+            end
+            local value = valueToken.value
             table.insert(setClauses, { column = column, value = value })
             if peek() and peek().value == "," then
                 consume()
@@ -146,7 +161,11 @@ function YACC:parse(tokens)
             while true do
                 local column = consume().value
                 local operator = consume().value
-                local value = consume().value
+                local valueToken = consume()
+                if not valueToken then
+                    error("Expected value but found nil.")
+                end
+                local value = valueToken.value
                 table.insert(whereClause, { column = column, operator = operator, value = value })
                 if peek() and (peek().value == "AND" or peek().value == "OR") then
                     consume()
@@ -176,7 +195,11 @@ function YACC:parse(tokens)
             while true do
                 local column = consume().value
                 local operator = consume().value
-                local value = consume().value
+                local valueToken = consume()
+                if not valueToken then
+                    error("Expected value but found nil.")
+                end
+                local value = valueToken.value
                 table.insert(whereClause, { column = column, operator = operator, value = value })
                 if peek() and (peek().value == "AND" or peek().value == "OR") then
                     consume()
@@ -199,21 +222,42 @@ function YACC:parse(tokens)
     local function parseCreate()
         expect("CREATE")
         expect("TABLE")
-        local tableName = consume().value
+        
+        local tableNameToken = consume()
+        if not tableNameToken then
+            error("[rSQL][parseCreate] Expected table name but found nil.")
+        end
+        local tableName = tableNameToken.value
+        
         local columns = {}
+    
         if peek() and peek().value == "(" then
             consume()
-            while true do
-                local column = consume().value
-                table.insert(columns, column)
-                if peek() and peek().value == "," then
-                    consume()
-                elseif peek() and peek().value == ")" then
-                    consume()
-                    break
+            if peek() and peek().value == ")" then
+                consume()
+            else
+                while true do
+                    local columnToken = consume()
+                    if not columnToken then
+                        error("[rSQL][parseCreate] Expected column name but found nil.")
+                    end
+                    table.insert(columns, columnToken.value)
+                    
+                    local nextToken = peek()
+                    if nextToken and nextToken.value == "," then
+                        consume()
+                    elseif nextToken and nextToken.value == ")" then
+                        consume()
+                        break
+                    else
+                        error("[rSQL][parseCreate] Expected ',' or ')' but found " .. (nextToken and nextToken.value or "nil"))
+                    end
                 end
             end
+        else
+            error("[rSQL][parseCreate] Expected '(' after table name.")
         end
+    
         return {
             type = "CREATE",
             tableName = tableName,
@@ -223,7 +267,7 @@ function YACC:parse(tokens)
             values = {},
             commandOptions = {}
         }
-    end
+    end    
 
     local function parseDrop()
         expect("DROP")

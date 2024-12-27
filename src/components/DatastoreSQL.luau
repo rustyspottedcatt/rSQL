@@ -24,12 +24,10 @@ end
     @param query string - The SQL query string to normalize.
     @return string - The normalized SQL query string.
 ]]
-
 local function normalizeSQL(query)
     query = query:gsub("%s+", " ")
     query = query:gsub("%s*,%s*", ", ")
     query = query:gsub("%s*%(%s*", "("):gsub("%s*%)%s*", ")")
-
     return query:match("^%s*(.-)%s*$")
 end
 
@@ -81,15 +79,15 @@ function DatastoreSQL.query(self: Types.DatastoreSQLConnection, query: Types.SQL
             querySuccess, queryData = self:update(parsedQuery.tableName, parsedQuery.setClauses, parsedQuery.whereClause)
         elseif queryType == "DELETE" and self.config.allowDelete then
             querySuccess, queryData = self:delete(parsedQuery.tableName, parsedQuery.whereClause)
-            elseif queryType == "ALTER" and self.config.allowAlter then
-                local tableName, alterType, columnDetails = parsedQuery.tableName, parsedQuery.commandOptions[1], { [1] = parsedQuery.commandOptions[2], [2] = parsedQuery.commandOptions[3] }
-                if alterType == "ADD" then
-                    querySuccess, queryData = self:alterTableAddColumn(tableName, columnDetails)
-                elseif alterType == "DROP" then
-                    querySuccess, queryData = self:alterTableDropColumn(tableName, columnDetails)
-                else
-                    return reject(generateError(functionName, "Unsupported ALTER TABLE operation."))
-                end            
+        elseif queryType == "ALTER" and self.config.allowAlter then
+            local tableName, alterType, columnDetails = parsedQuery.tableName, parsedQuery.commandOptions[1], { [1] = parsedQuery.commandOptions[2], [2] = parsedQuery.commandOptions[3] }
+            if alterType == "ADD" then
+                querySuccess, queryData = self:alterTableAddColumn(tableName, columnDetails)
+            elseif alterType == "DROP" then
+                querySuccess, queryData = self:alterTableDropColumn(tableName, columnDetails)
+            else
+                return reject(generateError(functionName, "Unsupported ALTER TABLE operation."))
+            end            
         else
             return reject(generateError(functionName, "Command not supported or disallowed by configuration."))
         end
@@ -128,7 +126,6 @@ function DatastoreSQL.parseSQL(self: Types.DatastoreSQLConnection, query: Types.
 
     return astOrError
 end
-
 
 --[[
     Creates a new table in the datastore.
@@ -214,7 +211,7 @@ function DatastoreSQL.truncateTable(self: Types.DatastoreSQLConnection, tableNam
             if not currentData then
                 return false
             end
-            return {}
+            return { _schema = currentData._schema, rows = {} }
         end)
     end)
 
@@ -287,7 +284,6 @@ function DatastoreSQL.insert(self: Types.DatastoreSQLConnection, tableName: stri
     end
 end
 
-
 --[[
     Selects records from a table based on conditions, order, limit, and distinct.
 
@@ -312,7 +308,6 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
     end
 
     if not fetchedData then
-        -- NOTE: This is not an error, just an empty result set.
         return true, {}
     end
 
@@ -380,7 +375,6 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
                 end
             end
         end
-        
 
         if match then
             if columns[1] == "*" then
@@ -443,7 +437,6 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
         return true, results
     end
 end
-
 
 --[[
     Updates records in a table based on conditions.
@@ -643,7 +636,10 @@ function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: stri
                 error("No matching records found to delete.")
             end
 
-            return filteredData
+            return {
+                _schema = currentData._schema,
+                rows = filteredData
+            }
         end)
     end)
 
@@ -653,7 +649,6 @@ function DatastoreSQL.delete(self: Types.DatastoreSQLConnection, tableName: stri
         return false, generateError(functionName, "Failed to delete records: " .. tostring(updateError))
     end
 end
-
 
 --[[
     Splits a string by a given separator.
@@ -695,10 +690,13 @@ end
 function DatastoreSQL.parseConditions(self: Types.DatastoreSQLConnection, conditionStr: string): {any}
     local functionName = "DatastoreSQL.parseConditions"
     local conditions = {}
-    for key, value in string.gmatch(conditionStr, "(%w+)%s*=%s*'?(%w+)'?") do
-        conditions[key] = value
+    for column, operator, value in string.gmatch(conditionStr, "(%w+)%s*([=!<>]+)%s*'([^']*)'") do
+        table.insert(conditions, { column = column, operator = operator, value = value })
     end
-    if next(conditions) == nil then
+    for column, operator, value in string.gmatch(conditionStr, '(%w+)%s*([=!<>]+)%s*"([^"]*)"') do
+        table.insert(conditions, { column = column, operator = operator, value = value })
+    end
+    if #conditions == 0 then
         error(generateError(functionName, "Failed to parse conditions: No valid key-value pairs found."))
     end
     return conditions
@@ -709,14 +707,11 @@ end
 
     @function stripQuotes
     @param self Types.DatastoreSQLConnection - The SQL connection instance.
-    @param s string - The string to strip quotes from.
+    @param value string - The string to strip quotes from.
     @return string - The unquoted string.
 ]]
 function DatastoreSQL.stripQuotes(self: Types.DatastoreSQLConnection, value: string): string
-    local stripped = string.gsub(value, [["([^"]*)"]], "%1")
-    stripped = string.gsub(stripped, [[%'([^']*)%']], "%1")
-    
-    return stripped
+    return value
 end
 
 --[[
@@ -729,10 +724,13 @@ end
 ]]
 function DatastoreSQL.parseSetClause(self: Types.DatastoreSQLConnection, setStr: string): {any}
     local setClauses = {}
-    for key, value in string.gmatch(setStr, "(%w+)%s*=%s*([^,]+)") do
-        setClauses[key] = self:stripQuotes(value:match("^%s*(.-)%s*$"))
+    for column, value in string.gmatch(setStr, "(%w+)%s*=%s*'([^']*)'") do
+        table.insert(setClauses, { column = column, value = value })
     end
-    if next(setClauses) == nil then
+    for column, value in string.gmatch(setStr, '(%w+)%s*=%s*"([^"]*)"') do
+        table.insert(setClauses, { column = column, value = value })
+    end
+    if #setClauses == 0 then
         error("Failed to parse SET clause: No valid key-value pairs found.")
     end
     return setClauses
@@ -768,6 +766,8 @@ function DatastoreSQL.alterTableAddColumn(self: Types.DatastoreSQLConnection, ta
             for _, record in ipairs(currentData.rows) do
                 record[columnName] = nil
             end
+
+            table.insert(currentData._schema, columnName)
 
             return currentData
         end)
@@ -805,6 +805,13 @@ function DatastoreSQL.alterTableDropColumn(self: Types.DatastoreSQLConnection, t
         self.datastore:UpdateAsync(tableName, function(currentData: { _schema : {any}, rows : {any}})
             if not currentData then
                 error("Table '" .. tableName .. "' does not exist.")
+            end
+
+            for i, col in ipairs(currentData._schema) do
+                if col == columnName then
+                    table.remove(currentData._schema, i)
+                    break
+                end
             end
 
             for _, record in ipairs(currentData.rows) do
