@@ -1,7 +1,7 @@
 # Getting Started
 
 Follow these steps to integrate and use the `rSQL` module in your Roblox game project.
-
+ 
 ---
 
 ### Prerequisites
