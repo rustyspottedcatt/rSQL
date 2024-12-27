@@ -20,5 +20,10 @@ module.exports = {
       id: "advanced-usage",
       label: "Advanced Usage",
     },
+    {
+      type: "doc",
+      id: "templates",
+      label: "Templates",
+    }
   ],
 };

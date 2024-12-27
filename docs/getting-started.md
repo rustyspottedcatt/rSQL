@@ -8,17 +8,6 @@ Welcome to the **rSQL** module documentation. This guide will walk you through t
 
 ---
 
-## What is rSQL?
-
-`rSQL` is a Roblox module that brings SQL-like data management capabilities to your games. With `rSQL`, you can:
-
-- Create and manage virtual tables using SQL syntax.
-- Query, insert, update, and delete data with SQL-inspired commands.
-- Integrate seamlessly with Roblox DataStores for persistent storage.
-- Handle complex data structures and relationships.
-
----
-
 ## Installation
 
 ### Step 1: Download the Module
