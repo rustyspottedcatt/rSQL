@@ -282,58 +282,64 @@ function ProfileSQL.select(self: Types.ProfileSQLConnection, tableName: string, 
 
     local results = {}
 
-    -- Apply Conditions
     for _, record in ipairs(tableData.rows) do
         local match = true
 
         if conditions then
-            for _, condition in ipairs(conditions) do
-                local recordValue = tostring(record[condition.column] or "")
+            for _, condition in ipairs(conditions) do 
+                local columnValue = tostring(record[condition.column] or "")
                 local conditionValue = tostring(condition.value or "")
-
-                -- Handle numeric comparisons if applicable
-                local numRecord = tonumber(recordValue)
-                local numCondition = tonumber(conditionValue)
-
-                if numRecord and numCondition then
-                    recordValue = numRecord
-                    conditionValue = numCondition
-                end
-
-                if condition.operator == "=" or condition.operator == "==" then
-                    if recordValue ~= conditionValue then
-                        match = false
-                        break
-                    end
-                elseif condition.operator == "!=" then
-                    if recordValue == conditionValue then
-                        match = false
-                        break
-                    end
-                elseif condition.operator == ">" then
-                    if not (recordValue > conditionValue) then
-                        match = false
-                        break
-                    end
-                elseif condition.operator == "<" then
-                    if not (recordValue < conditionValue) then
-                        match = false
-                        break
-                    end
-                elseif condition.operator == ">=" then
-                    if not (recordValue >= conditionValue) then
-                        match = false
-                        break
-                    end
-                elseif condition.operator == "<=" then
-                    if not (recordValue <= conditionValue) then
+                
+                if  condition.operator == "LIKE" then
+                    local pattern = conditionValue:gsub("%%", ".*")
+                    if not columnValue:lower():find(pattern:lower()) then
                         match = false
                         break
                     end
                 else
-                    warn("[rSQL] Unsupported operator in condition:", condition.operator)
-                    match = false
-                    break
+                    local numRecord = tonumber(columnValue)
+                    local numCondition = tonumber(conditionValue)
+    
+                    if numRecord and numCondition then
+                        columnValue = numRecord
+                        conditionValue = numCondition
+                    end
+    
+                    if condition.operator == "=" or condition.operator == "==" then
+                        if columnValue ~= conditionValue then
+                            match = false
+                            break
+                        end
+                    elseif condition.operator == "!=" then
+                        if columnValue == conditionValue then
+                            match = false
+                            break
+                        end
+                    elseif condition.operator == ">" then
+                        if not (columnValue > conditionValue) then
+                            match = false
+                            break
+                        end
+                    elseif condition.operator == "<" then
+                        if not (columnValue < conditionValue) then
+                            match = false
+                            break
+                        end
+                    elseif condition.operator == ">=" then
+                        if not (columnValue >= conditionValue) then
+                            match = false
+                            break
+                        end
+                    elseif condition.operator == "<=" then
+                        if not (columnValue <= conditionValue) then
+                            match = false
+                            break
+                        end
+                    else
+                        warn("[rSQL] Unsupported operator in condition:", condition.operator)
+                        match = false
+                        break
+                    end
                 end
             end
         end

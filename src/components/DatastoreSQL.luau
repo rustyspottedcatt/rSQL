@@ -332,46 +332,54 @@ function DatastoreSQL.select(self: Types.DatastoreSQLConnection, tableName: stri
                 local operator = tostring(condition.operator)
                 local conditionValue = condition.value
         
-                local isNumericComparison = tonumber(columnValue) and tonumber(conditionValue)
-                if isNumericComparison then
-                    columnValue = tonumber(columnValue)
-                    conditionValue = tonumber(conditionValue)
-                end
-        
-                if operator == ">" then
-                    if columnValue <= conditionValue then
-                        match = false
-                        break
-                    end
-                elseif operator == "<" then
-                    if columnValue >= conditionValue then
-                        match = false
-                        break
-                    end
-                elseif operator == ">=" then
-                    if columnValue < conditionValue then
-                        match = false
-                        break
-                    end
-                elseif operator == "<=" then
-                    if columnValue > conditionValue then
-                        match = false
-                        break
-                    end
-                elseif operator == "=" or operator == "==" then
-                    if tostring(columnValue) ~= tostring(conditionValue) then
-                        match = false
-                        break
-                    end
-                elseif operator == "!=" then
-                    if tostring(columnValue) == tostring(conditionValue) then
+                if operator == "LIKE" then
+                    local pattern = conditionValue:gsub("%%", ".*")
+                    if not columnValue:lower():find(pattern:lower()) then
                         match = false
                         break
                     end
                 else
-                    warn("[rSQL] Unsupported operator in condition:", operator)
-                    match = false
-                    break
+                    local isNumericComparison = tonumber(columnValue) and tonumber(conditionValue)
+                    if isNumericComparison then
+                        columnValue = tonumber(columnValue)
+                        conditionValue = tonumber(conditionValue)
+                    end
+            
+                    if operator == ">" then
+                        if columnValue <= conditionValue then
+                            match = false
+                            break
+                        end
+                    elseif operator == "<" then
+                        if columnValue >= conditionValue then
+                            match = false
+                            break
+                        end
+                    elseif operator == ">=" then
+                        if columnValue < conditionValue then
+                            match = false
+                            break
+                        end
+                    elseif operator == "<=" then
+                        if columnValue > conditionValue then
+                            match = false
+                            break
+                        end
+                    elseif operator == "=" or operator == "==" then
+                        if tostring(columnValue) ~= tostring(conditionValue) then
+                            match = false
+                            break
+                        end
+                    elseif operator == "!=" then
+                        if tostring(columnValue) == tostring(conditionValue) then
+                            match = false
+                            break
+                        end
+                    else
+                        warn("[rSQL] Unsupported operator in condition:", operator)
+                        match = false
+                        break
+                    end
                 end
             end
         end
