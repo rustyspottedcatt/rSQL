@@ -38,7 +38,7 @@ jobs:
           awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {found=1; next} found && /^## /{exit} found{print}' CHANGELOG.md > notes.md
           [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: rSQL ${{ github.ref_name }}
           body_path: notes.md
