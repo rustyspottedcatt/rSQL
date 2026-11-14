@@ -4,7 +4,7 @@
 local Version = {
 	major = 2,
 	minor = 0,
-	patch = 0,
+	patch = 1,
 	prerelease = nil :: string?,
 }
 

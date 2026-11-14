@@ -183,6 +183,61 @@ return function(t)
 		end)
 	end)
 
+	-- Roblox's UpdateAsync swallows errors from the transform function and just
+	-- returns nil. FakeDataStore does the same, so these fail if rSQL relies on
+	-- the error coming back on its own.
+	describe("DataStore errors inside UpdateAsync", function()
+		for _, layout in { "sharded", "single" } do
+			it("raises a failed NOT NULL check and leaves the row alone (" .. layout .. ")", function()
+				local store = FakeDataStore.new()
+				local db = rSQL.datastore(store, { layout = layout, sleep = noSleep })
+				db:exec("CREATE TABLE Players (UserId INTEGER PRIMARY KEY, Name TEXT NOT NULL)")
+				db:exec("INSERT INTO Players VALUES (1, 'ann')")
+				expect(function()
+					db:exec("UPDATE Players SET Name = NULL WHERE UserId = 1")
+				end).toThrow("can't be NULL")
+				expect(db:exec("SELECT Name FROM Players WHERE UserId = 1").rows[1].Name).toBe("ann")
+			end)
+
+			it("raises a UNIQUE clash in an UPDATE (" .. layout .. ")", function()
+				local store = FakeDataStore.new()
+				local db = rSQL.datastore(store, { layout = layout, sleep = noSleep })
+				db:exec("CREATE TABLE Players (UserId INTEGER PRIMARY KEY, Name TEXT UNIQUE)")
+				db:exec("INSERT INTO Players VALUES (1, 'ann'), (2, 'bob')")
+				expect(function()
+					db:exec("UPDATE Players SET Name = 'ann' WHERE UserId = 2")
+				end).toThrow("must be unique")
+				expect(db:exec("SELECT Name FROM Players WHERE UserId = 2").rows[1].Name).toBe("bob")
+			end)
+
+			it("raises a duplicate key without retrying it (" .. layout .. ")", function()
+				local store = FakeDataStore.new()
+				local db = rSQL.datastore(store, { layout = layout, sleep = noSleep })
+				db:exec("CREATE TABLE Players (UserId INTEGER PRIMARY KEY, Name TEXT)")
+				db:exec("INSERT INTO Players VALUES (1, 'ann')")
+				store:reset()
+				expect(function()
+					db:exec("INSERT INTO Players VALUES (1, 'bob')")
+				end).toThrow("duplicate key")
+				expect(store.requests.update).toBe(1)
+				expect(db:exec("SELECT Name FROM Players WHERE UserId = 1").rows[1].Name).toBe("ann")
+			end)
+		end
+
+		it("counts rows right when Roblox runs a transform twice", function()
+			local store = FakeDataStore.new({ rerunTransforms = true })
+			local db = rSQL.datastore(store, { shards = 4, sleep = noSleep })
+			players(db)
+			expect(db:exec("SELECT COUNT(*) AS n FROM Players").rows[1].n).toBe(40)
+			local r = db:exec("UPDATE Players SET Coins = Coins + 1 WHERE Coins > 200")
+			expect(r.affected).toBe(20)
+			expect(db:exec("SELECT Coins FROM Players WHERE UserId = 40").rows[1].Coins).toBe(401)
+			local ids = db:exec("INSERT INTO Players (UserId, Name) VALUES (41, 'x'), (42, 'y')").insertIds
+			expect(#ids).toBe(2)
+			expect(db:exec("DELETE FROM Players WHERE UserId > 40").affected).toBe(2)
+		end)
+	end)
+
 	describe("Profiles", function()
 		it("stores tables inside profile.Data in the 1.x layout", function()
 			local profile = { Data = { Coins = 10 } }

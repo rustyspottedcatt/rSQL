@@ -6,6 +6,10 @@
 	  * values are copied on the way in and out, like real serialization, and
 	    functions or non-string dictionary keys are rejected
 	  * UpdateAsync gets a copy of the old value; returning nil cancels the write
+	  * an error inside the UpdateAsync transform cancels the write and
+	    UpdateAsync returns nil without throwing, which is what Roblox does
+	  * `rerunTransforms` runs every transform one extra time first and
+	    throws that result away, like UpdateAsync retrying after a conflict
 	  * values over `limitBytes` (default 4 MB) fail with the same kind of
 	    message Roblox uses
 	  * `failNext(n)` makes the next n calls throw a throttling error
@@ -19,6 +23,7 @@ export type FakeDataStore = {
 	requests: { get: number, update: number, remove: number, set: number },
 	bytesRead: number,
 	limitBytes: number,
+	rerunTransforms: boolean,
 	GetAsync: (self: FakeDataStore, key: string) -> any,
 	SetAsync: (self: FakeDataStore, key: string, value: any) -> (),
 	UpdateAsync: (self: FakeDataStore, key: string, fn: (old: any) -> any) -> any,
@@ -56,12 +61,13 @@ local function size(value: any): number
 	return if ok then #encoded else 0
 end
 
-function FakeDataStore.new(options: { limitBytes: number? }?): FakeDataStore
+function FakeDataStore.new(options: { limitBytes: number?, rerunTransforms: boolean? }?): FakeDataStore
 	local self = {
 		data = {},
 		requests = { get = 0, update = 0, remove = 0, set = 0 },
 		bytesRead = 0,
 		limitBytes = (options and options.limitBytes) or 4_194_304,
+		rerunTransforms = (options and options.rerunTransforms) == true,
 	} :: FakeDataStore
 	local failures = 0
 
@@ -103,8 +109,11 @@ function FakeDataStore.new(options: { limitBytes: number? }?): FakeDataStore
 		if old ~= nil then
 			self.bytesRead += size(old)
 		end
-		local new = fn(copy(old))
-		if new == nil then
+		if self.rerunTransforms then
+			pcall(fn, copy(old))
+		end
+		local ok, new = pcall(fn, copy(old))
+		if not ok or new == nil then
 			return nil
 		end
 		store(key, new)

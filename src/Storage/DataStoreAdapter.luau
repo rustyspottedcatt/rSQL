@@ -110,10 +110,32 @@ function DataStoreAdapter.new(dataStore: any, options: Options?): Adapter.Adapte
 		end)
 	end
 
+	--[=[
+		UpdateAsync doesn't rethrow errors from the transform function: the
+		write is cancelled and the call returns nil as if nothing happened.
+		So the transform runs inside pcall, the error is kept, and it's raised
+		here once UpdateAsync returns. Roblox may run the transform more than
+		once, so only the last run's error counts.
+	]=]
 	local function update(key: string, transform: (old: any) -> any): any
 		self.stats.writes += 1
 		return call("UpdateAsync(" .. key .. ")", function()
-			return dataStore:UpdateAsync(key, transform)
+			local failure: string? = nil
+			local result = dataStore:UpdateAsync(key, function(old)
+				failure = nil
+				local ok, value = pcall(transform, old)
+				if ok then
+					return value
+				end
+				local message = tostring(value)
+				-- a bug in a transform fails the same way on every retry, so make it final
+				failure = if string.find(message, "rSQL:", 1, true) then message else "rSQL: " .. message
+				return nil
+			end)
+			if failure then
+				error(failure, 0)
+			end
+			return result
 		end)
 	end
 

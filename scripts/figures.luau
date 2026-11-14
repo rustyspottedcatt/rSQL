@@ -10,6 +10,7 @@
 ]]
 
 local fs = require("@lune/fs")
+local process = require("@lune/process")
 local rSQL = require("../src")
 local Json = require("../src/Util/Json")
 local FakeDataStore = require("../tests/support/FakeDataStore")
@@ -66,21 +67,15 @@ local function commas(n: number): string
 	return (string.gsub(out, "^,", ""))
 end
 
--- count the tests so the banner can't drift from the suite
+-- run the suite and use its count, so the banner can't drift from it
+-- (tests defined in loops make counting `it(` in the files wrong)
 local testCount = 0
-local function countTests(dir: string)
-	for _, name in fs.readDir(dir) do
-		local path = dir .. "/" .. name
-		if fs.isDir(path) then
-			countTests(path)
-		elseif string.match(name, "%.spec%.luau$") then
-			for _ in string.gmatch(fs.readFile(path), "\n%s*it%(") do
-				testCount += 1
-			end
-		end
-	end
+do
+	local run = process.exec("lune", { "run", "tests/run" })
+	local passed, failed = string.match(run.stdout, "(%d+) passed, (%d+) failed")
+	assert(run.ok and passed and failed == "0", "the test suite must pass before drawing figures")
+	testCount = tonumber(passed) :: number
 end
-countTests("tests")
 
 local last = bench.lookup[#bench.lookup]
 local ratio = last.single.bytes / last.sharded.bytes

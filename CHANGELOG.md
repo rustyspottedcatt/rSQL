@@ -4,6 +4,17 @@ All notable changes to rSQL. The format follows [Keep a Changelog](https://keepa
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-11-14
+
+### Fixed
+
+- Errors raised inside an `UpdateAsync` transform (duplicate keys, `NOT NULL`, `UNIQUE` in an `UPDATE`, changing a row's key on a sharded table) never reached the caller. Roblox cancels the write and returns `nil` instead of rethrowing, so the statement looked like it succeeded while nothing was written. rSQL now catches the error inside the transform and raises it after `UpdateAsync` returns. Reported by Xoifail on the DevForum.
+- Those errors are no longer retried, since they fail the same way every time.
+
+### Changed
+
+- The test DataStore now swallows transform errors like Roblox does, and can run each transform twice to check that statements count rows correctly when `UpdateAsync` retries.
+
 ## [2.0.0]
 
 A rewrite of the whole library. The 1.x API still works and 1.x data loads as it is; see [docs/migration.md](docs/migration.md).
@@ -63,4 +74,5 @@ First release: `SELECT`, `INSERT`, `UPDATE` and `DELETE` on DataStores, ProfileS
 
 Pre-release.
 
+[2.0.1]: https://github.com/rustyspottedcatt/rSQL/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/rustyspottedcatt/rSQL/compare/c5b711a...v2.0.0

@@ -129,7 +129,7 @@ src/
 
 ## Testing
 
-- 84 tests cover the lexer and parser, every statement on the in-memory engine, the DataStore layouts (sharding, retries, size limits, resharding, 1.x data), profiles, the 1.x API and the promise.
+- 91 tests cover the lexer and parser, every statement on the in-memory engine, the DataStore layouts (sharding, retries, size limits, resharding, 1.x data), profiles, the 1.x API and the promise.
 - The same suite runs three ways: under Lune, from the Rojo-built place with Roblox's `require` rules (`lune run scripts/emulate-studio`), and inside Studio with `test.project.json`.
 - The DataStore tests use a stand-in that copies values like real serialization, enforces the size limit and can throw throttling errors on demand.
 - `src/` passes strict type checking with luau-lsp.

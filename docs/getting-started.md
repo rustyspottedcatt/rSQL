@@ -8,7 +8,7 @@ sidebar_position: 2
 
 Pick one:
 
-- Wally: add `rSQL = "rustyspottedcatt/rsql@2.0.0"` under `[dependencies]` and run `wally install`.
+- Wally: add `rSQL = "rustyspottedcatt/rsql@2.0.1"` under `[dependencies]` and run `wally install`.
 - Model file: download `rSQL.rbxm` from the [latest release](https://github.com/rustyspottedcatt/rSQL/releases) and drop it into `ReplicatedStorage`.
 - Rojo: sync `src/` into `ReplicatedStorage` as a ModuleScript called `rSQL`.
 
