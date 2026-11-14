@@ -18,7 +18,7 @@ jobs:
           echo '```' >> "$GITHUB_STEP_SUMMARY"
           cat bench.txt >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bench
           path: docs/figures/data/bench.json

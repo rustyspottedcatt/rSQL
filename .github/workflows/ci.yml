@@ -67,7 +67,7 @@ jobs:
           rojo build default.project.json --output build/rSQL.rbxm
           rojo build dev.project.json --output build/rSQL-Playground.rbxl
           rojo build test.project.json --output build/rSQL-Tests.rbxl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rsql-build
           path: build/*.rbx*
