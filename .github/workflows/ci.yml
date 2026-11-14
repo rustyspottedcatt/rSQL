@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: CompeyDev/setup-rokit@v0.1.2
+      - uses: CompeyDev/setup-rokit@v0.2.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: StyLua
@@ -35,7 +35,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-      - uses: CompeyDev/setup-rokit@v0.1.2
+      - uses: CompeyDev/setup-rokit@v0.2.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Unit and integration tests
@@ -46,7 +46,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: CompeyDev/setup-rokit@v0.1.2
+      - uses: CompeyDev/setup-rokit@v0.2.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run suite with Roblox require semantics
@@ -58,7 +58,7 @@ jobs:
     needs: [quality, test, studio-emulation]
     steps:
       - uses: actions/checkout@v4
-      - uses: CompeyDev/setup-rokit@v0.1.2
+      - uses: CompeyDev/setup-rokit@v0.2.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build model, playground and test place

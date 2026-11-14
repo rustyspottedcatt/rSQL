@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: CompeyDev/setup-rokit@v0.1.2
+      - uses: CompeyDev/setup-rokit@v0.2.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: Run benchmarks
