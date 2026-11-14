@@ -1,0 +1,9 @@
+std = "rsql"
+# Roblox-only scripts use engine globals; they are checked in Studio.
+exclude = ["tests/roblox/*", "examples/roblox/*", "src/**/*.server.luau"]
+
+[lints]
+shadowing = "allow"
+unused_variable = "warn"
+global_usage = "deny"
+mixed_table = "allow"

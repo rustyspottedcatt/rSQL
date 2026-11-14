@@ -1,0 +1,53 @@
+name: CD
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: CompeyDev/setup-rokit@v0.1.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate
+        run: |
+          stylua --check src tests scripts bench examples
+          selene src tests
+          luau-lsp analyze --platform=standard --definitions=types/globals.d.luau --ignore="src/**/*.server.luau" src
+          lune run tests/run
+          lune run scripts/emulate-studio
+
+      - name: Build
+        run: |
+          mkdir -p build
+          rojo build default.project.json --output build/rSQL.rbxm
+          rojo build dev.project.json --output build/rSQL-Playground.rbxl
+          rojo build test.project.json --output build/rSQL-Tests.rbxl
+
+      - name: Release notes from CHANGELOG
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v v="$VERSION" '$0 ~ "^## \\[" v "\\]" {found=1; next} found && /^## /{exit} found{print}' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "See CHANGELOG.md." > notes.md
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: rSQL ${{ github.ref_name }}
+          body_path: notes.md
+          files: build/*
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
+      - name: Publish to Wally
+        env:
+          WALLY_AUTH_TOKEN: ${{ secrets.WALLY_AUTH_TOKEN }}
+        run: |
+          wally login --token "$WALLY_AUTH_TOKEN"
+          wally publish

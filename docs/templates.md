@@ -2,164 +2,140 @@
 sidebar_position: 5
 ---
 
-# Templates
+# Recipes
 
-Here are some `rSQL` templates to kickstart your journey!
+Copy, paste, rename the tables. All of these are in `examples/roblox` too.
 
----
-
-## Player score datastore with rSQL:
+## Player data in a shared DataStore
 
 ```lua
-local PlayerDatastore: DataStore = game:GetService("DataStoreService"):GetDataStore("PlayerDatastore")
-local Promise = require(game.ReplicatedStorage.Packages.promise)
-local rSQL = require(game.ReplicatedStorage.Packages.rSQL)
+local db = rSQL.datastore(DataStoreService:GetDataStore("Game"))
 
--- Connect to the datastore with configuration
-local DB_CONNECTION = rSQL:connect(PlayerDatastore, {
-	allowInsert = true,
-	allowCreate = true,
-	allowOverwrite = false,
-	allowSelect = true,
-	allowUpdate = true,
-}):expect()
+db:exec([[
+	CREATE TABLE IF NOT EXISTS Players (
+		UserId   INTEGER PRIMARY KEY,
+		Name     TEXT NOT NULL,
+		Coins    INTEGER NOT NULL DEFAULT 0,
+		LastSeen INTEGER
+	)
+]])
 
--- Initialize the database
-local function onInit()
-	return Promise.new(function(resolve, reject)
-		warn("[rSQL Server] Initializing Datastore")
-
-		local createSuccess, createError = DB_CONNECTION:query("CREATE TABLE Players (ID, Name, Score)"):expect()
-
-		if createSuccess then
-			resolve()
-		else
-			reject(createError)
-		end
-	end)
-end
-
--- Handle player joining
-local function onPlayerJoined(player: Player)
-	return Promise.new(function(resolve, reject)
-		warn("[rSQL Server] Player joined:", player.Name)
-
-		local playerId = player.UserId
-		local query = string.format("SELECT * FROM Players WHERE ID = %d", playerId)
-		local playerData = DB_CONNECTION:query(query):expect()
-		
-		print(playerData)
-
-		if type(playerData) == "table" and #playerData > 0 then
-			player:SetAttribute("Score", playerData[1].Score)
-			resolve(playerData[1])
-		else
-			local insertQuery = string.format(
-				"INSERT INTO Players (ID, Name, Score) VALUES (%d, '%s', %d)",
-				playerId, player.Name, 0
-			)
-			local insertSuccess, insertError = DB_CONNECTION:query(insertQuery):expect()
-
-			if insertSuccess then
-				player:SetAttribute("Score", 0)
-				resolve()
-			else
-				reject(insertError)
-			end
-		end
-	end)
-end
-
--- Handle player leaving
-local function onPlayerLeaving(player: Player)
-	return Promise.new(function(resolve, reject)
-		local playerId = player.UserId
-		local playerScore = player:GetAttribute("Score")
-
-		if playerScore ~= nil then
-			-- Build and execute the query
-			local updateQuery = string.format(
-				"UPDATE Players SET Score = %d WHERE ID = %d",
-				playerScore, playerId
-			)
-			print("[DEBUG] Update Query:", updateQuery)
-
-			local updateSuccess, updateError = DB_CONNECTION:query(updateQuery):expect()
-			if updateSuccess then
-				warn(string.format("[rSQL Server] Saved data for player %s (Score: %d)", player.Name, playerScore))
-				resolve()
-			else
-				warn(string.format(
-					"[rSQL Server] Failed to save data for player %s: %s",
-					player.Name, tostring(updateError)
-					))
-				reject(updateError)
-			end
-		else
-			warn("[rSQL Server] No 'Score' attribute found for player:", player.Name)
-			reject("No score attribute")
-		end
-	end)
-end
-
-
--- Initialize and hook up events
-onInit():andThen(function()
-	warn("[rSQL Server] Successfully initialized datastore!")
-
-	game.Players.PlayerAdded:Connect(function(player)
-		onPlayerJoined(player):catch(function(err)
-			warn("[rSQL Server] Error during player join:", err)
-		end)
-	end)
-
-	for _, player in ipairs(game.Players:GetPlayers()) do
-		onPlayerJoined(player):catch(function(err)
-			warn("[rSQL Server] Error during player join:", err)
-		end)
+Players.PlayerAdded:Connect(function(player)
+	local found = db:exec("SELECT Coins FROM Players WHERE UserId = ?", { player.UserId }).rows[1]
+	if not found then
+		db:exec("INSERT INTO Players (UserId, Name) VALUES (?, ?)", { player.UserId, player.Name })
 	end
+	player:SetAttribute("Coins", if found then found.Coins else 0)
+end)
 
-	game.Players.PlayerRemoving:Connect(function(player)
-		onPlayerLeaving(player):catch(function(err)
-			warn("[rSQL Server] Error during player leave:", err)
-		end)
-	end)
-end):catch(function(err)
-	error("[rSQL Server] Failed to initialize datastore:", err)
+Players.PlayerRemoving:Connect(function(player)
+	db:exec("UPDATE Players SET LastSeen = ? WHERE UserId = ?", { os.time(), player.UserId })
 end)
 ```
 
-## Basic Usage
+## Leaderboard
 
 ```lua
-local PlayerDatastore: DataStore = game:GetService("DataStoreService"):GetDataStore("PlayerDatastore")
-local rSQL = require(game.ReplicatedStorage.Packages.rSQL)
-
--- Connect to the datastore with configuration
-local DB_CONNECTION = rSQL:connect(PlayerDatastore, {
-    allowInsert = true,  -- Allow inserting new data
-    allowCreate = true,  -- Allow creating tables
-    allowOverwrite = false -- Prevent overwriting data to ensure safety
-}):expect()
-
--- Create a Players table
-DB_CONNECTION:query("CREATE TABLE Players (ID, Name, Score)"):andThen(function()
-    print("Table 'Players' created successfully.")
-
-    -- Insert data for a sample player, John Doe
-    DB_CONNECTION:query("INSERT INTO Players (ID, Name, Score) VALUES (123456789, 'John Doe', 100)"):andThen(function()
-        print("Player data for 'John Doe' inserted successfully.")
-
-        -- Fetch data for John Doe
-        DB_CONNECTION:query("SELECT * FROM Players WHERE ID = 123456789"):andThen(function(result)
-            print("Fetched data for John Doe:", result)
-        end):catch(function(error)
-            warn("Failed to fetch player data:", error)
-        end)
-    end):catch(function(error)
-        warn("Failed to insert player data:", error)
-    end)
-end):catch(function(error)
-    warn("Failed to create table:", error)
+task.spawn(function()
+	while true do
+		local top = db:exec("SELECT Name, Coins FROM Players ORDER BY Coins DESC LIMIT 10").rows
+		for rank, row in top do
+			print(rank, row.Name, row.Coins)
+		end
+		task.wait(30)
+	end
 end)
 ```
+
+This is a full scan, so keep the interval in seconds, not frames.
+
+## Buying something without going negative
+
+```lua
+local function buy(player, price: number): boolean
+	local result = db:exec(
+		"UPDATE Players SET Coins = Coins - ? WHERE UserId = ? AND Coins >= ?",
+		{ price, player.UserId, price }
+	)
+	return result.affected == 1
+end
+```
+
+The check and the subtraction run inside one `UpdateAsync`, so two purchases at once can't both spend the same coins.
+
+## Inventory inside a profile
+
+```lua
+local db = rSQL.profile(profile)
+
+db:exec([[
+	CREATE TABLE IF NOT EXISTS Inventory (
+		Item     TEXT PRIMARY KEY,
+		Count    INTEGER NOT NULL DEFAULT 1,
+		Equipped BOOLEAN NOT NULL DEFAULT false
+	)
+]])
+
+local function give(item: string, amount: number)
+	local updated = db:exec("UPDATE Inventory SET Count = Count + ? WHERE Item = ?", { amount, item })
+	if updated.affected == 0 then
+		db:exec("INSERT INTO Inventory (Item, Count) VALUES (?, ?)", { item, amount })
+	end
+end
+```
+
+## Loot table in memory
+
+```lua
+local loot = rSQL.memory()
+loot:exec("CREATE TABLE Drops (Id INTEGER PRIMARY KEY AUTOINCREMENT, Item TEXT, Rarity TEXT, Weight REAL, MinLevel INTEGER)")
+loot:exec([[
+	INSERT INTO Drops (Item, Rarity, Weight, MinLevel) VALUES
+		('Wooden Sword', 'common', 60, 1),
+		('Iron Sword', 'rare', 25, 5),
+		('Flame Staff', 'epic', 10, 10),
+		('Crown', 'legendary', 1, 20)
+]])
+
+local function roll(level: number)
+	local options = loot:exec("SELECT Item, Weight FROM Drops WHERE MinLevel <= ?", { level }).rows
+	local total = 0
+	for _, o in options do
+		total += o.Weight
+	end
+	local pick = math.random() * total
+	for _, o in options do
+		pick -= o.Weight
+		if pick <= 0 then
+			return o.Item
+		end
+	end
+	return options[#options].Item
+end
+```
+
+## Stats per team
+
+```sql
+SELECT Team, COUNT(*) AS players, SUM(Coins) AS coins, ROUND(AVG(Level), 1) AS level
+FROM Players
+GROUP BY Team
+ORDER BY coins DESC
+```
+
+## Read-only handle for an admin panel
+
+```lua
+local admin = rSQL.datastore(store, { permissions = "read" })
+-- admin:exec("DROP TABLE Players") raises: rSQL: DROP isn't allowed on this database handle
+```
+
+## Trying things out without Studio
+
+```bash
+lune run scripts/rsql
+lune run scripts/rsql -- --file examples/sql/tour.sql
+lune run scripts/rsql -- --store dev.db.json
+```
+
+The shell prints results as tables and has `.tables`, `.schema <table>`, `.explain <query>` and `.stats`.

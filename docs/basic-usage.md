@@ -2,157 +2,137 @@
 sidebar_position: 3
 ---
 
-# Basic Usage
+# SQL reference
 
-This section introduces the fundamental concepts and operations of `rSQL`. Learn how to define tables, perform CRUD operations, and query data effectively.
+rSQL speaks a practical subset of SQL. If you've used SQLite or MySQL most of this will look familiar.
 
----
+![Queries against a DataStore](img/03-queries.png)
 
-## Establishing a Connection
+## Results
 
-Before using `rSQL`, establish a connection to a DataStore. This connection serves as the interface for all operations.
+`db:exec(sql, params)` returns a table:
 
-### Example:
-```lua
-local DataStoreService = game:GetService("DataStoreService")
-local rSQL = require(game.ReplicatedStorage.Packages.rSQL)
+| Field | What it is |
+|---|---|
+| `rows` | array of rows, each a table keyed by column name |
+| `columns` | column names, in order |
+| `affected` | rows inserted, updated or deleted |
+| `insertIds`, `lastInsertId` | primary keys of inserted rows |
+| `message` | short description, like `updated 3 rows in Players` |
+| `plan` | how the rows were found, like `key lookup on UserId` |
+| `stats` | `{ ms, reads, writes }` for this statement |
 
-local testDatastore = DataStoreService:GetDataStore("TestDatabase")
+## Tables
 
-local config = {
-    allowCreate = true,
-    allowInsert = true,
-    allowSelect = true,
-    allowUpdate = true,
-    allowDelete = true,
-}
+```sql
+CREATE TABLE [IF NOT EXISTS] Name (
+	Column TYPE [PRIMARY KEY] [AUTOINCREMENT] [NOT NULL] [UNIQUE] [DEFAULT value],
+	...
+	[, PRIMARY KEY (Column)]
+)
 
-local connection = rSQL:connect(testDatastore, config)
-connection:andThen(function()
-    print("Connection established!")
-end):catch(function(err)
-    warn("Failed to connect:", err)
-end)
+DROP TABLE [IF EXISTS] Name
+TRUNCATE TABLE Name
+ALTER TABLE Name ADD [COLUMN] Column TYPE ...
+ALTER TABLE Name DROP [COLUMN] Column
+ALTER TABLE Name RENAME COLUMN Old TO New
+SHOW TABLES
+DESCRIBE Name
 ```
 
----
+Without a `PRIMARY KEY`, rSQL adds a hidden auto-incrementing `_rowid`. `SELECT *` never returns it.
 
-## Creating a Table
+`AUTOINCREMENT` works on an `INTEGER PRIMARY KEY`. Leave the column out of the `INSERT` and rSQL fills it in.
 
-Tables in `rSQL` define the structure of your data. Use `CREATE TABLE` to define schemas.
+### Types
 
-### Example:
-```lua
-connection:query("CREATE TABLE Players (Id INTEGER PRIMARY KEY, Name TEXT, Score INTEGER)"):andThen(function(result)
-    print("Table created successfully!", result)
-end):catch(function(err)
-    warn("Error creating table:", err)
-end)
+| Type | Also accepted | Holds |
+|---|---|---|
+| `INTEGER` | `INT`, `BIGINT` | whole numbers |
+| `REAL` | `NUMBER`, `FLOAT`, `DOUBLE`, `NUMERIC`, `DECIMAL` | any number |
+| `TEXT` | `STRING`, `VARCHAR(n)`, `CHAR` | strings |
+| `BOOLEAN` | `BOOL` | `true` / `false` (also takes 1/0 and 'true'/'false') |
+| `JSON` | | any table a DataStore can save |
+| `BLOB` | `BUFFER` | buffers or raw strings |
+| (none) | `ANY` | anything, unchecked |
+
+Values are converted on write: `'500'` going into an `INTEGER` column is stored as `500`. Values that can't be converted are rejected with an error that names the column.
+
+## Reading
+
+```sql
+SELECT [DISTINCT] expr [AS alias], ... | *
+FROM Table [alias]
+[[LEFT] JOIN Other [alias] ON condition] ...
+[WHERE condition]
+[GROUP BY expr, ...]
+[HAVING condition]
+[ORDER BY expr|alias|position [ASC|DESC], ...]
+[LIMIT count [OFFSET skip]]
 ```
 
-### Explanation:
-- **`CREATE TABLE`**: SQL command to define a new table.
-- **Columns**: Define each column's name and data type (e.g., `Id INTEGER`, `Name TEXT`).
+Some examples:
 
----
-
-## Inserting Data
-
-Use the `INSERT INTO` command to add rows to a table.
-
-### Example:
-```lua
-connection:query("INSERT INTO Players (Id, Name, Score) VALUES (1, 'Carlos', 5000)"):andThen(function(result)
-    print("Data inserted successfully!", result)
-end):catch(function(err)
-    warn("Error inserting data:", err)
-end)
+```sql
+SELECT Name, Coins FROM Players WHERE Coins > 100 ORDER BY Coins DESC LIMIT 10
+SELECT Team, COUNT(*) AS players, AVG(Coins) AS avg FROM Players GROUP BY Team HAVING COUNT(*) > 5
+SELECT p.Name, i.Item FROM Players p JOIN Items i ON i.Owner = p.UserId WHERE p.UserId = ?
+SELECT * FROM Items WHERE Rarity IN ('epic', 'legendary') AND Name LIKE '%staff%'
 ```
 
----
+`ORDER BY` puts `NULL` first when ascending. `LIKE` uses `%` for any run of characters and `_` for one character, and ignores case. MySQL-style `LIMIT 20, 10` (skip 20, take 10) also works.
 
-## Querying Data
+## Writing
 
-Retrieve data from your tables using the `SELECT` command.
-
-### Example:
-```lua
-connection:query("SELECT Name, Score FROM Players WHERE Score > 3000 ORDER BY Score DESC"):andThen(function(results)
-    for _, row in pairs(results) do
-        print(row.Name, row.Score)
-    end
-end):catch(function(err)
-    warn("Error querying data:", err)
-end)
+```sql
+INSERT INTO Table [(columns)] VALUES (values), (values), ...
+UPDATE Table SET Column = expr, ... [WHERE condition]
+DELETE FROM Table [WHERE condition]
 ```
 
-### Explanation:
-- **`SELECT`**: SQL command to retrieve data.
-- **`WHERE`**: Filter results based on conditions.
-- **`ORDER BY`**: Sort results.
+`SET` can use the row's current values: `UPDATE Players SET Coins = Coins + 10, Level = Level + 1 WHERE UserId = ?`.
 
----
+Without `WHERE`, `UPDATE` and `DELETE` apply to every row, same as any SQL database.
 
-## Updating Data
+## Expressions
 
-Modify existing rows using the `UPDATE` command.
+| Kind | Operators and functions |
+|---|---|
+| comparison | `=` `!=` `<>` `<` `<=` `>` `>=` |
+| logic | `AND` `OR` `NOT` |
+| math | `+` `-` `*` `/` `%` |
+| text | `\|\|` (concatenate) |
+| tests | `x IN (...)`, `x BETWEEN a AND b`, `x LIKE 'pattern'`, `x IS NULL`, each with `NOT` |
+| aggregates | `COUNT(*)`, `COUNT(x)`, `COUNT(DISTINCT x)`, `SUM`, `AVG`, `MIN`, `MAX` |
+| functions | `LOWER`, `UPPER`, `LENGTH`, `ABS`, `ROUND(x, digits)`, `FLOOR`, `CEIL`, `COALESCE` / `IFNULL`, `SUBSTR(s, start, len)`, `TRIM` |
 
-### Example:
+`NULL` works like it does in SQL: a comparison with it is neither true nor false, so `WHERE Level > 1` skips rows where `Level` is `NULL`. Use `IS NULL` to find them.
+
+Strings use single quotes, and a doubled quote inside is a literal quote (`'it''s'`). Double quotes also work, for 1.x compatibility. Backticks quote names that clash with keywords: `` `Order` ``.
+
+## Parameters
+
 ```lua
-connection:query("UPDATE Players SET Score = 6000 WHERE Id = 1"):andThen(function(result)
-    print("Data updated successfully!", result)
-end):catch(function(err)
-    warn("Error updating data:", err)
-end)
+db:exec("SELECT * FROM Players WHERE Team = ? AND Coins > ?", { "red", 100 })
+db:exec("SELECT * FROM Players WHERE UserId = :id", { id = player.UserId })
+db:exec("UPDATE Players SET Guild = ? WHERE UserId = ?", { rSQL.NULL, player.UserId })
 ```
 
----
+A Luau table can't hold `nil`, so pass `rSQL.NULL` to write `NULL`. A parameter with no value is an error, not a silent `nil`.
 
-## Deleting Data
+## Prepared statements
 
-Remove rows from a table using the `DELETE` command.
-
-### Example:
 ```lua
-connection:query("DELETE FROM Players WHERE Id = 1"):andThen(function(result)
-    print("Data deleted successfully!", result)
-end):catch(function(err)
-    warn("Error deleting data:", err)
-end)
+local getCoins = db:prepare("SELECT Coins FROM Players WHERE UserId = ?")
+local coins = getCoins:run({ player.UserId }).rows[1].Coins
 ```
 
----
+`exec` caches parsed statements too, so this is mostly about readability.
 
-## Combining Operations
+## Errors
 
-You can chain operations to perform complex workflows.
+![Error messages](img/07-errors.png)
 
-### Example:
-```lua
-connection:query("CREATE TABLE Test (Id INTEGER PRIMARY KEY, Value INTEGER)")
-    :andThen(function()
-        return connection:query("INSERT INTO Test (Id, Value) VALUES (1, 100)")
-    end)
-    :andThen(function()
-        return connection:query("SELECT * FROM Test")
-    end)
-    :andThen(function(results)
-        for _, row in pairs(results) do
-            print(row.Id, row.Value)
-        end
-    end)
-    :catch(function(err)
-        warn("Error during operations:", err)
-    end)
-```
+Every error starts with `rSQL:`, says what went wrong and, for syntax errors, shows the line and column with a caret under the spot. Misspelled keywords, tables and columns come with a suggestion.
 
----
-
-## Next Steps
-
-Now that you understand the basics, proceed to explore:
-
-- [Advanced Usage](/advanced-usage.md)
-
-`rSQL` offers extensive flexibility and power to manage your game's data.
-
+Next: [DataStores, profiles and production use](advanced-usage.md).

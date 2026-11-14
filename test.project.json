@@ -1,0 +1,27 @@
+{
+  "name": "rSQL Tests",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "rSQLDev": {
+        "$className": "Folder",
+        "src": {
+          "$path": "src"
+        },
+        "tests": {
+          "$path": "tests"
+        }
+      }
+    },
+    "Workspace": {
+      "Baseplate": {
+        "$className": "Part",
+        "$properties": {
+          "Anchored": true,
+          "Size": [256, 4, 256],
+          "Position": [0, -2, 0]
+        }
+      }
+    }
+  }
+}

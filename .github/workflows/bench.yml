@@ -1,0 +1,24 @@
+name: Benchmarks
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: CompeyDev/setup-rokit@v0.1.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run benchmarks
+        run: lune run bench/run | tee bench.txt
+      - name: Publish summary
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat bench.txt >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench
+          path: docs/figures/data/bench.json

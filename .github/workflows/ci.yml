@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Format, lint, types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: CompeyDev/setup-rokit@v0.1.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: StyLua
+        run: stylua --check src tests scripts bench examples
+      - name: selene
+        run: selene src tests
+      - name: luau-lsp (strict)
+        run: luau-lsp analyze --platform=standard --definitions=types/globals.d.luau --ignore="src/**/*.server.luau" src
+
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: CompeyDev/setup-rokit@v0.1.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Unit and integration tests
+        run: lune run tests/run
+
+  studio-emulation:
+    name: Tests from the built Roblox place
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: CompeyDev/setup-rokit@v0.1.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run suite with Roblox require semantics
+        run: lune run scripts/emulate-studio
+
+  build:
+    name: Rojo build
+    runs-on: ubuntu-latest
+    needs: [quality, test, studio-emulation]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: CompeyDev/setup-rokit@v0.1.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build model, playground and test place
+        run: |
+          mkdir -p build
+          rojo build default.project.json --output build/rSQL.rbxm
+          rojo build dev.project.json --output build/rSQL-Playground.rbxl
+          rojo build test.project.json --output build/rSQL-Tests.rbxl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rsql-build
+          path: build/*.rbx*

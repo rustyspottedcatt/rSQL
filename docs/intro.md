@@ -2,79 +2,35 @@
 sidebar_position: 1
 ---
 
-# Introduction to rSQL
+# Introduction
 
-Welcome to the **rSQL** module documentation! This section provides an overview of the module's purpose, core concepts, and unique features.
+rSQL lets you store and query Roblox game data with SQL. You write `SELECT`, `INSERT`, `UPDATE` and `DELETE`, and rSQL turns them into DataStore calls, edits to a player's profile, or lookups in an in-memory table.
 
----
+![rSQL 2.0](img/01-banner.png)
 
-## What is rSQL?
+## When it helps
 
-`rSQL` is a powerful SQL-inspired library for Roblox game development. It simplifies data management by offering structured queries and robust integration with Roblox DataStores. Inspired by relational databases, `rSQL` enables developers to perform complex data manipulations effortlessly.
+- Data that's naturally a table: players, items, guild members, match history. Anything where you'd otherwise write loops over nested tables to filter, sort or count.
+- Queries you'd otherwise write by hand. "Top 10 by coins", "all rare items with a fire element" and "how many players per team" are one line each.
+- Data shared across servers. The DataStore backend splits tables over several keys and writes each one with `UpdateAsync`.
 
----
+## When it doesn't
 
-## Why Use rSQL?
+- A single player's save that you always load whole. A profile library (ProfileStore, ProfileService, DataKeep) is the right tool for that. You can still put rSQL tables inside the profile if you want SQL over them.
+- Big global queries every frame. Filtering on a non-key column reads every shard of a DataStore table. That's fine every few seconds, not every frame. Keep hot data in memory.
+- Transactions across many rows. Each shard is updated atomically, but a statement that touches several shards commits them one at a time.
 
-Managing game data is a challenging task, especially with large datasets or complex relationships. `rSQL` addresses these challenges by providing:
+## What's new in 2.0
 
-- **SQL-Like Syntax**: Familiar and intuitive commands for developers.
-- **Data Persistence**: Seamless integration with Roblox DataStores for storing and retrieving data.
-- **Flexibility**: Support for creating, modifying, and querying virtual tables.
-- **Scalability**: Designed for high performance and large datasets.
-- **Error Handling**: Clear debugging tools and promise-based error management.
+2.0 is a rewrite. The short version:
 
----
+- `CREATE TABLE` no longer wipes an existing table (1.x did, every time)
+- typed columns, so numbers stay numbers
+- tables split over several DataStore keys instead of one 4 MB key
+- a real parser with JOIN, GROUP BY, ORDER BY, LIMIT, LIKE, IN, BETWEEN, math and EXPLAIN
+- `?` and `:name` parameters, so player input can't change your query
+- error messages that point at the exact spot
+- no dependencies
+- the 1.x API still works, and 1.x data loads as it is
 
-## Key Features
-
-### 1. Virtual Tables
-Define and manage tables as abstractions over Roblox DataStores.
-
-### 2. SQL-Inspired Queries
-Use SQL-like commands such as `SELECT`, `INSERT`, `UPDATE`, and `DELETE`.
-
-Example:
-```lua
-connection:query("SELECT Name, Score FROM Players WHERE Score > 1000 ORDER BY Score DESC")
-```
-
-### 3. Advanced Query Capabilities
-Support for:
-- Filtering (`WHERE` clauses)
-- Sorting (`ORDER BY`)
-- Aggregations (`COUNT`, `SUM`)
-
-### 4. Integration with Roblox DataStores
-Easily connect `rSQL` to Roblox's persistent storage:
-```lua
-rSQL:connect(DataStoreInstance, config)
-```
-
-### 5. Debugging and Tracing
-Enable debugging to log SQL queries and errors:
-```lua
-rSQL.enableDebugging(true)
-```
-
-### 6. Promise-Based Operations
-Leverage promises for asynchronous queries and seamless error handling.
-
----
-
-## Philosophy
-
-`rSQL` is built on the principle of making data management as simple as possible without sacrificing flexibility or power. By abstracting complex operations, it enables developers to focus on creating engaging gameplay experiences.
-
----
-
-## Next Steps
-
-Dive deeper into the details:
-
-- [Getting Started](/getting-started)
-- [Basic Usage](/basic-usage.md)
-- [Advanced Usage](/advanced-usage.md)
-
-`rSQL` is here to make your data work for you!
-
+Next: [Getting started](getting-started.md).

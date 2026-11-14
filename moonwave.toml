@@ -1,5 +1,5 @@
 title = "rSQL"
-gitRepoUrl = "https://github.com/rustyspottedcatt/rSQL" 
+gitRepoUrl = "https://github.com/rustyspottedcatt/rSQL"
 gitSourceBranch = "main"
 changelog = true
 autoSectionPath = "src"
@@ -13,7 +13,7 @@ favicon = "/favicon.png"
 
 [footer]
 style = "dark"
-copyright = "Copyright © 2024 rSQL. Built with Moonwave and Docusaurus."
+copyright = "Copyright © 2024-2026 rustyspotted. MIT License."
 
 [home]
 enabled = true

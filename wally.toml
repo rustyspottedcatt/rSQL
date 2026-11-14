@@ -1,0 +1,13 @@
+[package]
+name = "rustyspottedcatt/rsql"
+description = "SQL for Roblox DataStores, player profiles and in-memory tables."
+version = "2.0.0"
+license = "MIT"
+authors = ["rustyspotted"]
+repository = "https://github.com/rustyspottedcatt/rSQL"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+exclude = ["**"]
+include = ["src", "src/**", "default.project.json", "wally.toml", "LICENSE", "README.md"]
+
+[dependencies]

@@ -1,0 +1,19 @@
+# Build outputs
+/build/
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+*.lock
+sourcemap.json
+
+# Wally
+/Packages/
+/ServerPackages/
+/DevPackages/
+
+# Local databases from scripts/rsql --store
+*.db.json
+
+.DS_Store
+*.log

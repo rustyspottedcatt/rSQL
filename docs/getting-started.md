@@ -2,91 +2,78 @@
 sidebar_position: 2
 ---
 
-# Getting Started with rSQL
+# Getting started
 
-Welcome to the **rSQL** module documentation. This guide will walk you through the setup and basic usage of the module.
+## Install
 
----
+Pick one:
 
-## Installation
+- Wally: add `rSQL = "rustyspottedcatt/rsql@2.0.0"` under `[dependencies]` and run `wally install`.
+- Model file: download `rSQL.rbxm` from the [latest release](https://github.com/rustyspottedcatt/rSQL/releases) and drop it into `ReplicatedStorage`.
+- Rojo: sync `src/` into `ReplicatedStorage` as a ModuleScript called `rSQL`.
 
-### Step 1: Download the Module
+rSQL has no dependencies. Use it from server scripts; DataStores aren't available on the client.
 
-1. Download the `rSQL` module from the official repository or marketplace.
-2. Place the module in your game’s `ReplicatedStorage` or another shared location.
-
-### Step 2: Require the Module
-
-Require the `rSQL` module in your scripts:
+## Open a database
 
 ```lua
-local rSQL = require(game.ReplicatedStorage.Packages.rSQL)
+local DataStoreService = game:GetService("DataStoreService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local rSQL = require(ReplicatedStorage.rSQL)
+
+-- shared by every server
+local db = rSQL.datastore(DataStoreService:GetDataStore("Game"))
+
+-- one player's profile (ProfileStore, ProfileService or DataKeep)
+local playerDb = rSQL.profile(profile)
+
+-- in memory, nothing saved
+local items = rSQL.memory()
 ```
 
-### Step 3: Configuration
+All three give you the same object with the same methods.
 
-Define the configuration for your SQL operations. Example:
+## Create a table
 
 ```lua
-local config = {
-    allowCreate = true,
-    allowDrop = true,
-    allowInsert = true,
-    allowSelect = true,
-    allowUpdate = true,
-    allowDelete = true,
-}
+db:exec([[
+	CREATE TABLE IF NOT EXISTS Players (
+		UserId INTEGER PRIMARY KEY,
+		Name   TEXT NOT NULL,
+		Coins  INTEGER NOT NULL DEFAULT 0,
+		Joined INTEGER
+	)
+]])
 ```
 
----
+Run this on every server start. `IF NOT EXISTS` makes it do nothing when the table is already there.
 
-## Setting Up a Table
+Pick the primary key with care on DataStore tables: lookups by primary key are the cheap ones (one shard read). For player data that's almost always `UserId`.
 
-To use `rSQL`, you need to define and manage tables. Tables in `rSQL` simulate database tables.
-
-### Example: Creating a Table
+## Read and write
 
 ```lua
-local connection = rSQL:connect(testDatastore, config):expect() -- yields
-connection:query("CREATE TABLE Players (Id, Name, Score)")
+db:exec("INSERT INTO Players (UserId, Name, Joined) VALUES (?, ?, ?)", { player.UserId, player.Name, os.time() })
+
+local result = db:exec("SELECT Coins FROM Players WHERE UserId = ?", { player.UserId })
+local coins = result.rows[1].Coins
+
+db:exec("UPDATE Players SET Coins = Coins + ? WHERE UserId = ?", { 25, player.UserId })
 ```
 
-### Explanation:
-- **`CREATE TABLE`**: Creates a new table.
-- **`Players`**: Table name.
-- **Columns**: `Id`, `Name`, and `Score` define the schema.
+Always pass player-provided values as parameters (`?`) instead of building the SQL string yourself. Parameters are never parsed as SQL, so a name like `x' OR '1'='1` is just a name.
 
----
+`exec` runs on the calling thread and yields while DataStore calls are in flight, like any DataStore code. It raises an error if something goes wrong, so wrap it in `pcall` where a failure shouldn't stop the script.
 
-## Basic Queries
+## The playground
 
-### Inserting Data
-```lua
-local result = connection:query("INSERT INTO Players (Id, Name, Score) VALUES (1, 'Carlos', 5000)"):expect()
+The repo has a place that shows all of this running:
+
+```bash
+rokit install
+rojo build dev.project.json -o rSQL-Playground.rbxl
 ```
 
-### Selecting Data
-```lua
-local result = connection:query("SELECT Name, Score FROM Players WHERE Score > 1000"):expect()
-```
+Open it, press Play and walk onto the yellow pad.
 
-### Updating Data
-```lua
-local result = connection:query("UPDATE Players SET Score = 6000 WHERE Id = 1"):expect()
-```
-
-### Deleting Data
-```lua
-local result = connection:query("DELETE FROM Players WHERE Id = 1"):expect()
-```
-
----
-
-## Next Steps
-
-Once you’re comfortable with the basics, explore the following:
-
-- [Basic Usage](/basic-usage.md)
-- [Advanced Usage](/advanced-usage.md)
-
-
+Next: [SQL reference](basic-usage.md).

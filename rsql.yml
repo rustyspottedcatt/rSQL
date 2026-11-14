@@ -1,0 +1,7 @@
+# Globals that both Roblox and Lune provide but selene's "luau" std doesn't declare.
+base: luau
+name: rsql
+globals:
+  warn:
+    args:
+      - type: "..."

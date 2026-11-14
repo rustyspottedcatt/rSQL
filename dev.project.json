@@ -1,0 +1,46 @@
+{
+  "name": "rSQL Playground",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "rSQL": {
+        "$path": "src"
+      }
+    },
+    "ServerScriptService": {
+      "PlayerData": {
+        "$path": "examples/roblox/PlayerData.server.luau"
+      },
+      "LootTable": {
+        "$path": "examples/roblox/LootTable.server.luau",
+        "$properties": { "Enabled": false }
+      },
+      "ProfileInventory": {
+        "$path": "examples/roblox/ProfileInventory.server.luau",
+        "$properties": { "Enabled": false }
+      },
+      "LegacyQuickStart": {
+        "$path": "examples/roblox/LegacyQuickStart.server.luau",
+        "$properties": { "Enabled": false }
+      }
+    },
+    "Workspace": {
+      "Baseplate": {
+        "$className": "Part",
+        "$properties": { "Anchored": true, "Size": [256, 4, 256], "Position": [0, -2, 0], "Color": [0.39, 0.37, 0.33], "Material": "Slate" }
+      },
+      "SpawnLocation": {
+        "$className": "SpawnLocation",
+        "$properties": { "Anchored": true, "Size": [6, 1, 6], "Position": [0, 0.5, -16], "Duration": 0 }
+      },
+      "CoinPad": {
+        "$className": "Part",
+        "$properties": { "Anchored": true, "Size": [8, 1, 8], "Position": [0, 0.5, 0], "Color": [0.98, 0.75, 0.15], "Material": "Neon" }
+      },
+      "Leaderboard": {
+        "$className": "Part",
+        "$properties": { "Anchored": true, "Size": [14, 8, 1], "Position": [0, 5, 12], "Color": [0.1, 0.1, 0.1] }
+      }
+    }
+  }
+}

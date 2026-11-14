@@ -1,0 +1,9 @@
+# Toolchain for rSQL. Install everything with `rokit install`.
+
+[tools]
+lune = "lune-org/lune@0.10.4"
+luau-lsp = "JohnnyMorganz/luau-lsp@1.53.0"
+rojo = "rojo-rbx/rojo@7.6.1"
+stylua = "JohnnyMorganz/StyLua@2.5.2"
+selene = "Kampfkarren/selene@0.30.1"
+wally = "UpliftGames/wally@0.3.2"
