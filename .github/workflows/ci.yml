@@ -15,7 +15,7 @@ jobs:
     name: Format, lint, types
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: CompeyDev/setup-rokit@v0.1.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -34,7 +34,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: CompeyDev/setup-rokit@v0.1.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -45,7 +45,7 @@ jobs:
     name: Tests from the built Roblox place
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: CompeyDev/setup-rokit@v0.1.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -57,7 +57,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [quality, test, studio-emulation]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: CompeyDev/setup-rokit@v0.1.2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
